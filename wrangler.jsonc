@@ -1,0 +1,26 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "hello-hilltop",
+  "main": "src/worker.js",
+  "compatibility_date": "2026-10-01",
+  "account_id": "c74b4a5d3545b51f59db846c41a52483",
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS",
+    "run_worker_first": true,
+    "not_found_handling": "404-page"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "hello-hilltop-db",
+      "database_id": "496719ee-16dd-418b-a280-94fc05d11fb1"
+    }
+  ],
+  "routes": [
+    { "pattern": "hellohilltop.org", "custom_domain": true },
+    { "pattern": "www.hellohilltop.org", "custom_domain": true }
+  ],
+  "observability": { "enabled": true }
+  // Secret (not in git): EXPORT_TOKEN  ->  `npx wrangler secret put EXPORT_TOKEN`
+}
