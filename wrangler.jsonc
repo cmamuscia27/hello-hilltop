@@ -22,5 +22,6 @@
     { "pattern": "www.hellohilltop.org", "custom_domain": true }
   ],
   "observability": { "enabled": true }
-  // Secret (not in git): EXPORT_TOKEN  ->  `npx wrangler secret put EXPORT_TOKEN`
+  // Secrets (not in git): EXPORT_TOKEN, TURNSTILE_SECRET
+  // `npx wrangler secret put EXPORT_TOKEN` / `npx wrangler secret put TURNSTILE_SECRET`
 }

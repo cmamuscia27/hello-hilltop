@@ -19,6 +19,7 @@
 <link rel="manifest" href="/site.webmanifest">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="preconnect" href="https://challenges.cloudflare.com">
 <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Nunito:wght@400;700;800;900&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/styles.css">
 </head>
@@ -219,6 +220,7 @@
       <label class="check"><input type="checkbox" name="volunteer" value="1"> I'd like to volunteer</label>
       <div class="hp" aria-hidden="true"><label for="su-website">Website</label><input id="su-website" name="website" type="text" tabindex="-1" autocomplete="off"></div>
       <input type="hidden" name="source" value="site">
+      <div class="turnstile" id="signup-turnstile"></div>
       <button class="btn btn-teal" type="submit">Say Hello 👋</button>
       <p class="form-msg" role="status" aria-live="polite"></p>
     </form>
@@ -241,6 +243,7 @@
       <textarea id="id-idea" name="idea" rows="5" maxlength="2000" required></textarea>
       <label class="check"><input type="checkbox" name="would_help" value="1"> I'd help make it happen</label>
       <div class="hp" aria-hidden="true"><label for="id-website">Website</label><input id="id-website" name="website" type="text" tabindex="-1" autocomplete="off"></div>
+      <div class="turnstile" id="ideas-turnstile"></div>
       <button class="btn btn-orange" type="submit">Send it! 💌</button>
       <p class="form-msg" role="status" aria-live="polite"></p>
     </form>
@@ -284,5 +287,6 @@
 </footer>
 
 <script src="/app.js" defer></script>
+<script src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit&onload=onHilltopTurnstileLoad" defer></script>
 </body>
 </html>

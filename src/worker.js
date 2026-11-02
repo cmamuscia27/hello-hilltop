@@ -6,6 +6,9 @@
 const APEX = "hellohilltop.org";
 const EMAIL_RE = /^[^\s@<>()[\]\\,;:"]+@[^\s@<>()[\]\\,;:"]+\.[^\s@<>()[\]\\,;:"]{2,}$/;
 
+// No Content-Security-Policy header is set. Turnstile loads from
+// https://challenges.cloudflare.com (script-src and frame-src). If a CSP is
+// added later, those directives must allow that host.
 const SECURITY_HEADERS = {
   "X-Content-Type-Options": "nosniff",
   "Referrer-Policy": "strict-origin-when-cross-origin",
@@ -31,6 +34,56 @@ function json(data, status = 200) {
 
 const clean = (v, max) => (typeof v === "string" ? v.replace(/[\u0000-\u001f\u007f]/g, " ").trim().slice(0, max) : "");
 const truthy = (v) => v === true || v === "on" || v === "1" || v === "true" || v === "yes";
+
+const SITEVERIFY_URL = "https://challenges.cloudflare.com/turnstile/v0/siteverify";
+const TURNSTILE_HOSTS = new Set(["hellohilltop.org"]);
+const TURNSTILE_MSG = "We couldn't confirm you're a neighbor (and not a robot). Please try again.";
+const SPAM_MSG = "That looks like a link or a sales pitch. The Idea Box is for neighbor ideas, so we couldn't save it.";
+
+// Whole words for the short spam terms so "Seoul" or "season" still get through.
+// Links are rejected on purpose: the Idea Box is for neighbor ideas, not pitches.
+const IDEA_SPAM_RE =
+  /https?:\/\/|www\.|\b[\w-]+\.(?:com|net|org|info|biz|io|xyz|co|us|link|click|site|online)\b|\bseo\b|search[ -]?engines?|\brankings?\b|index(?:ing)? your (?:site|website|page|url)|\bback-?links?\b|google index/i;
+
+function ideaLooksLikeSpam(idea) {
+  const text = idea.normalize("NFKC").replace(/[\u200b-\u200d\ufeff]/g, "");
+  return IDEA_SPAM_RE.test(text);
+}
+
+async function verifyTurnstile(request, env, token, action) {
+  if (typeof token !== "string" || token.length === 0 || token.length > 2048) return false;
+  if (typeof env.TURNSTILE_SECRET !== "string" || env.TURNSTILE_SECRET.length === 0) {
+    console.error("TURNSTILE_SECRET is not set");
+    return false;
+  }
+  const remoteip = request.headers.get("CF-Connecting-IP") || "";
+  let result;
+  try {
+    const response = await fetch(SITEVERIFY_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      signal: AbortSignal.timeout(10_000),
+      body: new URLSearchParams({
+        secret: env.TURNSTILE_SECRET,
+        response: token,
+        remoteip,
+      }),
+    });
+    if (!response.ok) throw new Error(`siteverify ${response.status}`);
+    result = await response.json();
+  } catch (err) {
+    console.error("Turnstile siteverify failed", err && err.name);
+    return false;
+  }
+  if (!result || typeof result !== "object") return false;
+  const hostname = typeof result.hostname === "string" ? result.hostname.toLowerCase() : "";
+  if (result.success !== true || result.action !== action || !TURNSTILE_HOSTS.has(hostname)) {
+    const codes = Array.isArray(result["error-codes"]) ? result["error-codes"] : [];
+    console.error("Turnstile rejected", codes);
+    return false;
+  }
+  return true;
+}
 
 async function readBody(request) {
   const type = request.headers.get("content-type") || "";
@@ -60,6 +113,9 @@ async function handleSignup(request, env) {
   const volunteer = truthy(data.volunteer) ? 1 : 0;
   const source = clean(data.source, 40) || "site";
   if (!EMAIL_RE.test(email)) return respond(isForm, false, "signup", "Please enter a valid email address.", 400);
+  if (!(await verifyTurnstile(request, env, data["cf-turnstile-response"], "signup"))) {
+    return respond(isForm, false, "signup", TURNSTILE_MSG, 403);
+  }
   await env.DB.prepare(
     `INSERT INTO signups (name, email, volunteer, source) VALUES (?1, ?2, ?3, ?4)
      ON CONFLICT(email) DO UPDATE SET
@@ -78,6 +134,10 @@ async function handleIdea(request, env) {
   const would_help = truthy(data.would_help) ? 1 : 0;
   if (idea.length < 3) return respond(isForm, false, "ideas", "Tell us a little more about your idea.", 400);
   if (emailRaw && !EMAIL_RE.test(emailRaw)) return respond(isForm, false, "ideas", "That email doesn't look right. Fix it or leave it blank.", 400);
+  if (ideaLooksLikeSpam(idea)) return respond(isForm, false, "ideas", SPAM_MSG, 400);
+  if (!(await verifyTurnstile(request, env, data["cf-turnstile-response"], "ideas"))) {
+    return respond(isForm, false, "ideas", TURNSTILE_MSG, 403);
+  }
   await env.DB.prepare(`INSERT INTO ideas (name, email, idea, would_help) VALUES (?1, ?2, ?3, ?4)`)
     .bind(name, emailRaw || null, idea, would_help).run();
   return respond(isForm, true, "ideas", "Got it! Every idea gets read. Thank you! 💡");
