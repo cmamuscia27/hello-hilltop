@@ -1,4 +1,46 @@
 (function () {
+  var SITEKEY = "0x4AAAAAAFw3k6QKRDwZ1bZ4";
+  var widgets = {};
+  var widgetErrors = {};
+
+  function widgetOptions(action) {
+    var narrow = window.matchMedia && window.matchMedia("(max-width: 480px)").matches;
+    return {
+      sitekey: SITEKEY,
+      action: action,
+      appearance: "interaction-only",
+      theme: "light",
+      size: narrow ? "compact" : "flexible",
+      "error-callback": function () { widgetErrors[action] = true; },
+    };
+  }
+
+  // Called by the Turnstile api.js onload query param. Both forms stay on the
+  // page after submit, so each widget id is kept and reset after every attempt.
+  window.onHilltopTurnstileLoad = function () {
+    if (!window.turnstile) return;
+    widgets["signup-form"] = turnstile.render("#signup-turnstile", widgetOptions("signup"));
+    widgets["ideas-form"] = turnstile.render("#ideas-turnstile", widgetOptions("ideas"));
+  };
+
+  function turnstileToken(formId) {
+    var widgetId = widgets[formId];
+    if (window.turnstile && widgetId != null) {
+      var fromWidget = turnstile.getResponse(widgetId);
+      if (fromWidget) return fromWidget;
+    }
+    var form = document.getElementById(formId);
+    var hidden = form && form.querySelector('input[name="cf-turnstile-response"]');
+    return (hidden && hidden.value) || "";
+  }
+
+  function resetTurnstile(formId) {
+    var widgetId = widgets[formId];
+    if (window.turnstile && widgetId != null) {
+      try { turnstile.reset(widgetId); } catch (e) { /* widget already gone */ }
+    }
+  }
+
   function setup(id, okDefault) {
     var form = document.getElementById(id);
     if (!form) return;
@@ -12,8 +54,16 @@
       if (email && email.required && !email.value.trim()) { show(false, "Please add your email."); email.focus(); return; }
       if (email && email.value.trim() && !/^\S+@\S+\.\S{2,}$/.test(email.value.trim())) { show(false, "That email doesn't look quite right."); email.focus(); return; }
       if (idea && idea.value.trim().length < 3) { show(false, "Tell us a little more about your idea."); idea.focus(); return; }
+      var token = turnstileToken(id);
+      if (!token) {
+        show(false, widgetErrors[id === "ideas-form" ? "ideas" : "signup"]
+          ? "The security check didn't load. Please refresh the page and try again."
+          : "Give us a second to check you're a neighbor, then try again.");
+        return;
+      }
       var data = {};
       new FormData(form).forEach(function (v, k) { data[k] = v; });
+      data["cf-turnstile-response"] = token;
       btn.disabled = true;
       fetch(form.action, { method: "POST", headers: { "Content-Type": "application/json", "Accept": "application/json" }, body: JSON.stringify(data) })
         .then(function (r) { return r.json().catch(function () { return { ok: false }; }); })
@@ -22,7 +72,10 @@
           else show(false, res.message || "Hmm, that didn't go through. Please try again.");
         })
         .catch(function () { show(false, "Hmm, that didn't go through. Please try again."); })
-        .finally(function () { btn.disabled = false; });
+        .finally(function () {
+          btn.disabled = false;
+          resetTurnstile(id);
+        });
     });
     function show(ok, text) { msg.textContent = text; msg.className = "form-msg " + (ok ? "ok" : "err"); }
   }

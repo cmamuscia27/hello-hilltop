@@ -127,6 +127,8 @@ h2{font-size:clamp(32px,7vw,56px);color:var(--teal);margin:6px 0 24px;line-heigh
 .form .check input{width:22px;height:22px;accent-color:var(--orange)}
 .form .btn{align-self:flex-start}
 .hp{position:absolute!important;left:-10000px;width:1px;height:1px;overflow:hidden}
+.turnstile{max-width:100%;margin:2px 0 8px;min-width:0}
+.turnstile iframe{max-width:100%}
 .form-msg{margin-top:14px;font-weight:800;min-height:1.5em}
 .form-msg.ok{color:var(--teal);background:#e3f4f2;border-radius:12px;padding:10px 14px}
 .form-msg.err{color:#b3261e;background:#fde8e6;border-radius:12px;padding:10px 14px}

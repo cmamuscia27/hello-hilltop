@@ -9,6 +9,7 @@ wrangler.jsonc      Worker config: assets, D1 binding, custom domains
 src/worker.js       API (/api/signup, /api/ideas, /api/export, /api/health), www→apex redirect, security headers
 public/             Static site (index.html, styles.css, app.js, 404.html, img/, favicons)
 schema.sql          D1 tables: signups, ideas
+test/forms.test.mjs Worker checks for Turnstile, the honeypot, the idea filter, and export
 print/              QR code PNG + 8x10" table-sign PNG/PDF (300 dpi)
 screenshots/        Live desktop and mobile screenshots
 ```
@@ -21,14 +22,18 @@ screenshots/        Live desktop and mobile screenshots
 | Worker | `hello-hilltop` (workers.dev subdomain disabled) |
 | D1 database | `hello-hilltop-db`, id `496719ee-16dd-418b-a280-94fc05d11fb1` |
 | Custom domains | `hellohilltop.org` (serves the site) and `www.hellohilltop.org` (301 to the apex) |
-| Secret | `EXPORT_TOKEN`: bearer token for the export endpoint (not in git) |
+| Secrets | `EXPORT_TOKEN` (bearer token for the export endpoint) and `TURNSTILE_SECRET` (Turnstile siteverify). Both are Worker secrets, already set on the deployed Worker, and neither belongs in git. |
 
 ## Forms
 
 - `POST /api/signup` takes `email` (required), `name` (optional), and `volunteer` (checkbox). A repeat email updates the existing row instead of adding a duplicate.
 - `POST /api/ideas` takes `idea` (required, 3–2000 chars), `name` (optional), `email` (optional), and `would_help` (checkbox).
 - Both endpoints accept JSON (used by app.js, which shows the success message inline) or a regular form post (without JS, the visitor is redirected to `/?thanks=signup#signup` and similar).
-- Spam protection: a hidden `website` honeypot field. Bots that fill it get a fake success response and nothing is saved. Server-side checks cover email format and field length limits.
+- Spam protection, in order:
+  - A hidden `website` honeypot on both forms. Submissions that fill it get a fake success response and nothing is saved.
+  - Cloudflare Turnstile (managed widget, shown only when a check is needed) on both forms. The public site key is in the page. The Worker checks the token with `https://challenges.cloudflare.com/turnstile/v0/siteverify` (secret `TURNSTILE_SECRET`, visitor IP from `CF-Connecting-IP`) before any D1 insert. A missing or invalid token gets a friendly error and is not saved. The page stays put after submit, so the widget is reset for the next try.
+  - Idea Box only: a conservative server-side filter rejects URLs and a short list of SEO pitches (`SEO`, `search engine`, `ranking`, `index your site`, `backlinks`, `google index`). Ordinary neighbor notes, including words like "Seoul" or "season", still go through.
+- The site does not send a Content-Security-Policy header, so nothing else is required for Turnstile. A future CSP must allow `https://challenges.cloudflare.com` on `script-src` and `frame-src`.
 
 ## Export the lists
 
@@ -56,6 +61,7 @@ Timestamps (`created_at`) are stored in UTC.
 npm i -D wrangler
 npx wrangler d1 execute hello-hilltop-db --remote --file=schema.sql   # only for a fresh database
 npx wrangler secret put EXPORT_TOKEN                                  # only once
+npx wrangler secret put TURNSTILE_SECRET                              # already set; do not commit the value
 npx wrangler deploy
 ```
 
