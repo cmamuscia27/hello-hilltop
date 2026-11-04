@@ -14,14 +14,21 @@
     {
       "binding": "DB",
       "database_name": "hello-hilltop-db",
-      "database_id": "496719ee-16dd-418b-a280-94fc05d11fb1"
+      "database_id": "496719ee-16dd-418b-a280-94fc05d11fb1",
+      "migrations_dir": "migrations"
     }
   ],
+  "triggers": {
+    "crons": ["0 */4 * * *"]
+  },
   "routes": [
     { "pattern": "hellohilltop.org", "custom_domain": true },
     { "pattern": "www.hellohilltop.org", "custom_domain": true }
   ],
-  "observability": { "enabled": true }
+  "observability": {
+    "enabled": true,
+    "traces": { "enabled": true }
+  }
   // Secrets (not in git): EXPORT_TOKEN, TURNSTILE_SECRET
   // `npx wrangler secret put EXPORT_TOKEN` / `npx wrangler secret put TURNSTILE_SECRET`
 }
