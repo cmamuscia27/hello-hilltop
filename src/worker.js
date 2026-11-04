@@ -1,7 +1,13 @@
-// Hello! Hilltop — Phase 1 Worker
-// Serves the static one-page site (ASSETS binding) and handles two forms
-// backed by D1 (DB binding). Lists are only readable via /api/export with
-// the EXPORT_TOKEN secret.
+// Hello! Hilltop Worker
+// Serves the static site (ASSETS binding) and handles two forms backed by D1
+// (DB binding). Signup and idea lists are only readable via /api/export with
+// the EXPORT_TOKEN secret. The same token manages neighborhood events and a
+// manual news refresh. The homepage reads events and headlines from D1. A
+// cron (and that refresh endpoint) fetches the RSS feeds.
+
+import { adminEvents } from "./events.js";
+import { refreshNews } from "./news.js";
+import { hoodHtml } from "./page.js";
 
 const APEX = "hellohilltop.org";
 const EMAIL_RE = /^[^\s@<>()[\]\\,;:"]+@[^\s@<>()[\]\\,;:"]+\.[^\s@<>()[\]\\,;:"]{2,}$/;
@@ -162,12 +168,32 @@ function toCSV(rows) {
   return [cols.join(","), ...rows.map((r) => cols.map((c) => esc(r[c])).join(","))].join("\r\n") + "\r\n";
 }
 
-async function handleExport(request, env, url) {
+function isAuthorized(request, env) {
   const auth = request.headers.get("authorization") || "";
   const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
-  if (!env.EXPORT_TOKEN || !timingSafeEqual(token, env.EXPORT_TOKEN)) {
-    return json({ ok: false, message: "Unauthorized" }, 401);
-  }
+  return Boolean(env.EXPORT_TOKEN) && timingSafeEqual(token, env.EXPORT_TOKEN);
+}
+
+function htmlResponse(assetResponse, html, cacheShort) {
+  const headers = new Headers(assetResponse.headers);
+  headers.delete("Content-Length");
+  headers.delete("Content-Encoding");
+  headers.set("Content-Type", "text/html; charset=utf-8");
+  if (cacheShort) headers.set("Cache-Control", "public, max-age=120");
+  return withHeaders(new Response(html, { status: assetResponse.status, headers }));
+}
+
+async function servePage(assetResponse, env, ctx) {
+  const type = assetResponse.headers.get("Content-Type") || "";
+  if (!type.includes("text/html")) return withHeaders(assetResponse);
+  const html = await assetResponse.text();
+  if (!html.includes("<!--HOOD_")) return htmlResponse(assetResponse, html, false);
+  const filled = await hoodHtml(html, env, ctx);
+  return htmlResponse(assetResponse, filled, filled !== html);
+}
+
+async function handleExport(request, env, url) {
+  if (!isAuthorized(request, env)) return json({ ok: false, message: "Unauthorized" }, 401);
   const list = url.searchParams.get("list");
   const table = list === "ideas" ? "ideas" : list === "signups" ? "signups" : null;
   if (!table) return json({ ok: false, message: "Use ?list=signups or ?list=ideas" }, 400);
@@ -183,7 +209,7 @@ async function handleExport(request, env, url) {
 }
 
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     const url = new URL(request.url);
 
     // www -> apex
@@ -192,11 +218,26 @@ export default {
       return Response.redirect(url.toString(), 301);
     }
 
+    if (url.pathname === "/events.html") {
+      url.pathname = "/events";
+      return Response.redirect(url.toString(), 301);
+    }
+
     if (url.pathname.startsWith("/api/")) {
       try {
         if (url.pathname === "/api/signup" && request.method === "POST") return await handleSignup(request, env);
         if (url.pathname === "/api/ideas" && request.method === "POST") return await handleIdea(request, env);
         if (url.pathname === "/api/export" && request.method === "GET") return await handleExport(request, env, url);
+        if (url.pathname === "/api/admin/news/refresh" && request.method === "POST") {
+          if (!isAuthorized(request, env)) return json({ ok: false, message: "Unauthorized" }, 401);
+          const result = await refreshNews(env);
+          return json(result, result.storage_ready === false ? 503 : 200);
+        }
+        if (url.pathname === "/api/admin/events" || url.pathname.startsWith("/api/admin/events/")) {
+          if (!isAuthorized(request, env)) return json({ ok: false, message: "Unauthorized" }, 401);
+          const result = await adminEvents(request, env, url);
+          return json(result.body, result.status);
+        }
         if (url.pathname === "/api/health") return json({ ok: true });
         return json({ ok: false, message: "Not found" }, 404);
       } catch (err) {
@@ -205,7 +246,29 @@ export default {
       }
     }
 
+    if (url.pathname === "/events" || url.pathname === "/events/") {
+      const assetUrl = new URL("/events.html", request.url);
+      const asset = await env.ASSETS.fetch(new Request(assetUrl, { method: "GET" }));
+      return servePage(asset, env, ctx);
+    }
+
     const res = await env.ASSETS.fetch(request);
-    return withHeaders(res);
+    return servePage(res, env, ctx);
+  },
+
+  async scheduled(_controller, env, _ctx) {
+    try {
+      const result = await refreshNews(env);
+      console.log(JSON.stringify({
+        msg: "news_refresh",
+        ok: result.ok,
+        kept_previous: result.kept_previous,
+        stored: result.stored ?? null,
+        matched: result.matched ?? null,
+        feeds: (result.feeds || []).map((feed) => ({ id: feed.id, ok: feed.ok, saved: feed.saved, error: feed.error })),
+      }));
+    } catch (err) {
+      console.error(JSON.stringify({ msg: "news_refresh_failed", error: err instanceof Error ? err.message : "error" }));
+    }
   },
 };
