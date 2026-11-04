@@ -3,10 +3,13 @@ import { readFileSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, it } from "node:test";
 import { parseDenverInput } from "../src/time.js";
+import { iconForEvent } from "../src/events.js";
 import { classifyItem, parseFeed, selectNews, titleKey } from "../src/news.js";
 import worker from "../src/worker.js";
 
-const migration = readFileSync(new URL("../migrations/0001_hood.sql", import.meta.url), "utf8");
+const migration = ["0001_hood.sql", "0002_event_icon.sql"]
+  .map((name) => readFileSync(new URL(`../migrations/${name}`, import.meta.url), "utf8"))
+  .join("\n");
 const originalFetch = globalThis.fetch;
 
 const HOME = `<!doctype html><html><body>
@@ -128,6 +131,28 @@ afterEach(() => {
   globalThis.fetch = originalFetch;
 });
 
+describe("event icons and the static page", () => {
+  it("picks an icon from the title and description, and keeps a chosen emoji", () => {
+    assert.equal(iconForEvent({ title: "Baby Storytime", description: "At the library" }).emoji, "📚");
+    assert.equal(iconForEvent({ title: "Zoo Lights" }).emoji, "🎄");
+    assert.equal(iconForEvent({ title: "Denver Zoo day", description: "See the animals" }).emoji, "🦁");
+    assert.equal(iconForEvent({ title: "Sunday brunch" }).emoji, "🥞");
+    assert.equal(iconForEvent({ title: "Free day at the museum" }).emoji, "🌳");
+    assert.equal(iconForEvent({ title: "Makers market", description: "Bring a craft" }).emoji, "🎨");
+    assert.equal(iconForEvent({ title: "Porch wave", description: "Come say hi" }).emoji, "🎉");
+    assert.equal(iconForEvent({ title: "Porch wave", icon: "🦁" }).emoji, "🦁");
+  });
+
+  it("does not keep the Halloween card and links Events in the header", () => {
+    const home = readFileSync(new URL("../public/index.html", import.meta.url), "utf8");
+    const events = readFileSync(new URL("../public/events.html", import.meta.url), "utf8");
+    assert.doesNotMatch(home, /Halloween|Oct 31|OCT 31|id="happenings"/);
+    assert.match(home, /class="nav-events" href="\/events"/);
+    assert.match(home, /See all events/);
+    assert.match(events, /class="nav-events" href="\/events"/);
+  });
+});
+
 describe("Denver event times", () => {
   it("treats a bare timestamp as America/Denver and keeps a zoned timestamp", () => {
     const winter = parseDenverInput("2026-11-04T10:00");
@@ -178,6 +203,18 @@ describe("news parsing and filters", () => {
     </item></channel></rss>`);
     assert.equal(google[0].source_name, "CBS News");
     assert.equal(titleKey(google[0].title), "hilltop grocer dies at 79");
+
+    const guidOnly = parseFeed(`<rss><channel><item>
+      <title>Graland fair</title>
+      <guid isPermaLink="true">https://www.9news.com/graland</guid>
+      <description>School fair.</description>
+    </item></channel></rss>`);
+    assert.equal(guidOnly[0].link, "https://www.9news.com/graland");
+    const hiddenGuid = parseFeed(`<rss><channel><item>
+      <title>Nope</title>
+      <guid isPermaLink="false">https://www.9news.com/nope</guid>
+    </item></channel></rss>`);
+    assert.equal(hiddenGuid.length, 0);
   });
 
   it("keeps neighborhood stories and drops crime, traffic, and non-Denver Hilltop", () => {
@@ -202,8 +239,10 @@ describe("news parsing and filters", () => {
       ["Man arrested near Hale", "", "9news", "drop"],
       ["Hale porch fest", "", "9news", "match"],
       ["Nurse talks cardiac arrest", "Cherry Creek clinic", "denverite", "match"],
-      ["Denver council recap", "citywide politics", "denverite", "fallback"],
+      ["Denver council recap", "citywide politics", "denverite", "drop"],
       ["Denver council recap", "citywide politics", "9news", "drop"],
+      ["New cafe opens for brunch", "Families welcome", "denverite", "fallback"],
+      ["Nuggets win again", "The game went late", "denverite", "drop"],
       ["Neighborhood note", "<p>Meet us in Cherry Creek North</p>", "google", "match"],
       ["Lane closure", "crash on 6th Avenue", "google", "drop"],
     ];
@@ -246,7 +285,11 @@ describe("news parsing and filters", () => {
       filler("A new park plan", 1),
       { ...match("Old Hilltop story", 40), link: "https://news.google.com/rss/articles/old" },
     ], now);
-    assert.deepEqual(filled.map((row) => row.title), ["Denver council recap", "A new park plan", "Cranmer Park concert"]);
+    assert.deepEqual(filled.map((row) => row.title), ["A new park plan", "Cranmer Park concert"]);
+    assert.deepEqual(selectNews([
+      filler("Election results are in", 0),
+      filler("RTD board winners", 1),
+    ], now), []);
 
     const preferDirect = selectNews([
       { ...match("Cranmer Park concert", 1), link: "https://news.google.com/rss/articles/same", source_name: "CBS News" },
@@ -333,8 +376,9 @@ describe("event admin and pages", () => {
     assert.equal(home.status, 200);
     assert.match(homeHtml, /Pie swap/);
     assert.match(homeHtml, /Cranmer Park, north lawn/);
-    assert.match(homeHtml, /&lt;script&gt;/);
     assert.doesNotMatch(homeHtml, /Old porch hang/);
+    const eventsPage = await (await worker.fetch(new Request("https://hellohilltop.org/events"), env)).text();
+    assert.match(eventsPage, /&lt;script&gt;/);
     assert.equal(home.headers.get("Cache-Control"), "public, max-age=120");
     assert.equal(home.headers.get("X-Content-Type-Options"), "nosniff");
 
@@ -361,8 +405,8 @@ describe("event admin and pages", () => {
     }
     const home = await (await worker.fetch(new Request("https://hellohilltop.org/"), env)).text();
     assert.match(home, /Day 1 hang/);
-    assert.match(home, /Day 6 hang/);
-    assert.doesNotMatch(home, /Day 7 hang/);
+    assert.match(home, /Day 2 hang/);
+    assert.doesNotMatch(home, /Day 3 hang/);
     const page = await worker.fetch(new Request("https://hellohilltop.org/events"), env);
     const pageHtml = await page.text();
     assert.match(pageHtml, /Day 7 hang/);
@@ -399,7 +443,8 @@ describe("news refresh", { concurrency: 1 }, () => {
       const denverite = String(url).includes("denverite.com");
       return new Response(rss([
         { title: "Cranmer Park concert", link: "https://denverite.com/cranmer", description: "SECRET_BODY should stay off the page." },
-        { title: "Denver council recap", link: "https://denverite.com/council", description: "Citywide." },
+        { title: "New playground opens for Denver families", link: "https://denverite.com/playground", description: "A park day for kids." },
+        { title: "Denver council recap", link: "https://denverite.com/council", description: "A city council vote." },
         { title: "Motorcyclist killed in crash near Lowry", link: "https://denverite.com/crash", description: "A fatal crash." },
       ].map((item) => denverite ? item : { ...item, link: item.link + "-copy" })), { status: 200, headers: { "Content-Type": "application/rss+xml" } });
     };
@@ -408,7 +453,7 @@ describe("news refresh", { concurrency: 1 }, () => {
     const ctx = { waitUntil(promise) { jobs.push(promise); } };
     const first = await worker.fetch(new Request("https://hellohilltop.org/"), env, ctx);
     const firstHtml = await first.text();
-    assert.match(firstHtml, /taking a little nap/);
+    assert.match(firstHtml, /Nothing from the neighborhood in the news just yet/);
     assert.doesNotMatch(firstHtml, /Cranmer Park concert/);
     await Promise.all(jobs);
     assert.ok(fetches >= 5);
@@ -417,7 +462,8 @@ describe("news refresh", { concurrency: 1 }, () => {
     const secondHtml = await second.text();
     assert.match(secondHtml, /Cranmer Park concert/);
     assert.match(secondHtml, /Denverite/);
-    assert.match(secondHtml, /Denver council recap/);
+    assert.match(secondHtml, /New playground opens for Denver families/);
+    assert.doesNotMatch(secondHtml, /Denver council recap/);
     assert.doesNotMatch(secondHtml, /SECRET_BODY/);
     assert.doesNotMatch(secondHtml, /killed in crash/);
     const afterRender = fetches;
@@ -440,6 +486,33 @@ describe("news refresh", { concurrency: 1 }, () => {
 
     const noToken = await worker.fetch(new Request("https://hellohilltop.org/api/admin/news/refresh", { method: "POST" }), env);
     assert.equal(noToken.status, 401);
+  });
+
+  it("retries a 503 and reads a 9NEWS guid link", async () => {
+    const env = envWith(createDb());
+    const tries = new Map();
+    globalThis.fetch = async (url) => {
+      const key = String(url);
+      tries.set(key, (tries.get(key) || 0) + 1);
+      if (key.includes("news.google.com") && tries.get(key) === 1) return new Response("busy", { status: 503 });
+      if (key.includes("9news.com")) {
+        return new Response(`<rss><channel><item><title>Graland school fair</title><link></link><guid isPermaLink="true">https://www.9news.com/graland</guid><pubDate>${new Date().toUTCString()}</pubDate><description>Games on the lawn.</description></item></channel></rss>`, { status: 200 });
+      }
+      return new Response(rss([
+        { title: "Neighborhood park concert", link: "https://denverite.com/park-concert", description: "Music in the park." },
+      ]), { status: 200 });
+    };
+    const res = await worker.fetch(new Request("https://hellohilltop.org/api/admin/news/refresh", {
+      method: "POST",
+      headers: authHeaders(),
+    }), env);
+    const body = await res.json();
+    assert.equal(body.ok, true);
+    assert.equal(body.feeds.find((feed) => feed.id === "google").ok, true);
+    assert.ok(body.feeds.find((feed) => feed.id === "9news").saved >= 1);
+    const page = await (await worker.fetch(new Request("https://hellohilltop.org/"), env)).text();
+    assert.match(page, /Graland school fair/);
+    assert.match(page, /https:\/\/www\.9news\.com\/graland/);
   });
 
   it("runs from the cron handler and reports a manual refresh", async () => {

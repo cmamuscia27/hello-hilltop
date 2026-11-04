@@ -35,6 +35,7 @@ CREATE TABLE IF NOT EXISTS events (
   link TEXT,
   source_name TEXT NOT NULL,
   dedupe_key TEXT NOT NULL UNIQUE,
+  icon TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 

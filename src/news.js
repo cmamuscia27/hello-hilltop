@@ -118,13 +118,26 @@ export function titleKey(title) {
   return text.slice(0, 180);
 }
 
+function guidLink(block) {
+  const match = block.match(/<guid\b([^>]*)>([\s\S]*?)<\/guid>/i);
+  if (!match) return "";
+  const value = plain(match[2]);
+  if (!/^https?:\/\//i.test(value)) return "";
+  if (/isPermaLink\s*=\s*["']false["']/i.test(match[1])) return "";
+  return value;
+}
+
 export function parseFeed(xml) {
-  if (typeof xml !== "string" || !/<(rss|feed|item|entry)\b/i.test(xml)) return [];
+  let source = typeof xml === "string" ? xml.replace(/^\uFEFF/, "") : "";
+  if (!/<(rss|feed|item|entry)\b/i.test(source) && /&lt;(rss|feed|item|entry)\b/i.test(source)) {
+    source = source.replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">");
+  }
+  if (!/<(rss|feed|item|entry)\b/i.test(source)) return [];
   const items = [];
-  for (const match of xml.matchAll(/<(item|entry)\b[^>]*>([\s\S]*?)<\/\1>/gi)) {
+  for (const match of source.matchAll(/<(item|entry)\b[^>]*>([\s\S]*?)<\/\1>/gi)) {
     const block = match[2];
     const title = textTag(block, ["title"]).slice(0, 300);
-    const link = linksFrom(block).slice(0, 2000);
+    const link = (linksFrom(block) || guidLink(block)).slice(0, 2000);
     if (!title || !link) continue;
     const publishedRaw = textTag(block, ["pubDate", "published", "updated", "dc:date"]);
     const published = Date.parse(publishedRaw);
@@ -159,6 +172,19 @@ export function isCrime(text, categories = []) {
   return CRIME_RE.test(stripped);
 }
 
+const POLITICS_RE = /\b(elections?|ballot|ballots|ballot measure|candidates?|congress(?:ional|person|woman|man)?|senators?|senate|governors?|gubernatorial|legislat(?:ure|ive|ion)|midterms?|caucuses?|incumbents?|democrats?|democratic|republicans?|primary election|primaries|referendums?|voters?|voting|polling place|city council|council (?:vote|race|seat|member|district)|secretary of state|attorney general|congressional district|declares victory|reelected|re-elected|tax increase|appears to pass|holds onto)\b/i;
+const COMMUNITY_RE = /\b(restaurants?|cafes?|coffee|brunch|breakfast|baker(?:y|ies)|food|foodie|markets?|farmers|festivals?|fairs?\b|parades?|concerts?|music|parks?|playgrounds?|zoos?|museums?|librar(?:y|ies)|storytime|story time|schools?|famil(?:y|ies)|kids|children|neighborhoods?|block part(?:y|ies)|arts?|makers?|brewer(?:y|ies)|patios?|trails?|gardens?|holidays?|lights|community|volunteers?|dogs?|pets?|bookstores?|theat(?:er|re)s?|free day|picnics?|porch|neighbors?)\b/i;
+
+export function isPolitics(text) {
+  const value = String(text || "");
+  if (POLITICS_RE.test(value)) return true;
+  return /\brtd\b/i.test(value) && /\bboard\b/i.test(value);
+}
+
+export function isCommunityStory(text) {
+  return COMMUNITY_RE.test(String(text || ""));
+}
+
 // "match" stays on the strip. "fallback" is a Denverite item used only when
 // fewer than three neighborhood matches exist. "drop" is discarded.
 export function classifyItem(item, feed) {
@@ -186,7 +212,11 @@ export function classifyItem(item, feed) {
     if (reason === "monaco" && MONACO_COUNTRY.test(text)) continue;
     if ((denverWord || localSource) && !(other && !denverWord)) return { action: "match", reason };
   }
-  if (feed.fallback) return { action: "fallback", reason: "denverite" };
+  if (feed.fallback) {
+    if (isPolitics(text)) return { action: "drop", reason: "politics" };
+    if (isCommunityStory(text)) return { action: "fallback", reason: "community" };
+    return { action: "drop", reason: "off-topic" };
+  }
   return { action: "drop", reason: "keyword" };
 }
 
@@ -219,20 +249,39 @@ async function readLimited(response, maxBytes) {
   return text;
 }
 
-async function loadFeed(feed, fetchImpl) {
+const FEED_UAS = [
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.1 Safari/605.1.15",
+];
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function retryableStatus(status) {
+  return status === 408 || status === 429 || status === 500 || status === 502 || status === 503 || status === 504;
+}
+
+async function loadFeedOnce(feed, fetchImpl, userAgent) {
   try {
     const response = await fetchImpl(feed.url, {
       headers: {
         Accept: "application/rss+xml, application/atom+xml, application/xml, text/xml;q=0.9, */*;q=0.8",
-        "User-Agent": "HelloHilltopBot/1.0 (+https://hellohilltop.org)",
+        "Accept-Language": "en-US,en;q=0.9",
+        "User-Agent": userAgent,
       },
       redirect: "follow",
       signal: AbortSignal.timeout(12_000),
     });
-    if (!response.ok) return { feed, ok: false, error: `status ${response.status}`, kept: [] };
+    if (!response.ok) {
+      return { feed, ok: false, error: `status ${response.status}`, kept: [], retryable: retryableStatus(response.status) };
+    }
     const xml = await readLimited(response, MAX_BYTES);
     const parsed = parseFeed(xml);
-    if (!parsed.length) return { feed, ok: false, error: "no items", kept: [] };
+    if (!parsed.length) {
+      const looksLikeFeed = /<(rss|feed|item|entry)\b/i.test(xml);
+      return { feed, ok: false, error: looksLikeFeed ? "no items" : "not a feed", kept: [], retryable: true };
+    }
     const kept = [];
     for (const item of parsed) {
       const classified = classifyItem(item, feed);
@@ -257,13 +306,23 @@ async function loadFeed(feed, fetchImpl) {
       const published = Date.parse(item.published_at);
       return !Number.isNaN(published) && published >= cutoff;
     });
-    return { feed, ok: true, kept: recent.slice(0, 25) };
+    return { feed, ok: true, kept: recent.slice(0, 25), retryable: false };
   } catch (err) {
     const name = err && err.name;
     const error = name === "TimeoutError" || name === "AbortError" ? "timeout" : "fetch failed";
-    console.log(JSON.stringify({ msg: "feed_failed", feed: feed.id, error }));
-    return { feed, ok: false, error, kept: [] };
+    return { feed, ok: false, error, kept: [], retryable: true };
   }
+}
+
+async function loadFeed(feed, fetchImpl) {
+  let last = { feed, ok: false, error: "fetch failed", kept: [] };
+  for (let attempt = 0; attempt < FEED_UAS.length; attempt++) {
+    if (attempt > 0) await sleep(400);
+    last = await loadFeedOnce(feed, fetchImpl, FEED_UAS[attempt]);
+    if (last.ok || !last.retryable) break;
+  }
+  if (!last.ok) console.log(JSON.stringify({ msg: "feed_failed", feed: feed.id, error: last.error }));
+  return last;
 }
 
 function planWrites(results) {
@@ -459,7 +518,7 @@ export function selectNews(rows, now = Date.now()) {
       if (!prev || better(copy, prev)) matches.set(key, copy);
       continue;
     }
-    if (Number(row.is_denverite) === 1 && fresh(copy, now, FILL_WINDOW_MS)) {
+    if (Number(row.is_denverite) === 1 && fresh(copy, now, FILL_WINDOW_MS) && !isPolitics(row.title) && isCommunityStory(row.title)) {
       const prev = fillers.get(key);
       if (!prev || better(copy, prev)) fillers.set(key, copy);
     }
@@ -479,7 +538,7 @@ export function selectNews(rows, now = Date.now()) {
 
 export function renderNewsList(items) {
   if (!items?.length) {
-    return `<p class="empty-hood news-empty">The neighborhood news is taking a little nap. Check back soon and the latest from around Denver will show up here.</p>`;
+    return `<p class="empty-hood news-empty">Nothing from the neighborhood in the news just yet. When a park day, a new cafe, or a block party makes the headlines, it'll show up here.</p>`;
   }
   const lis = items.map((item) => {
     const href = safeUrl(item.link || "");
