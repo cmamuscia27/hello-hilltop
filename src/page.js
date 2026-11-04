@@ -39,7 +39,7 @@ export async function hoodHtml(html, env, ctx) {
   if (html.includes("<!--HOOD_EVENTS_START-->") || html.includes("<!--HOOD_EVENTS_PAGE_START-->")) {
     try {
       const events = await listUpcoming(env);
-      if (html.includes("<!--HOOD_EVENTS_START-->")) next = fill(next, "HOOD_EVENTS", renderEventList(events, { limit: 6, ideaHref: "#ideas" }));
+      if (html.includes("<!--HOOD_EVENTS_START-->")) next = fill(next, "HOOD_EVENTS", renderEventList(events, { limit: 2, ideaHref: "#ideas" }));
       if (html.includes("<!--HOOD_EVENTS_PAGE_START-->")) next = fill(next, "HOOD_EVENTS_PAGE", renderEventList(events, { ideaHref: "/#ideas" }));
     } catch (err) {
       console.error(JSON.stringify({ msg: "events_render_failed", error: err instanceof Error ? err.message : "error" }));

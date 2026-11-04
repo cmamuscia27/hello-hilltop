@@ -68,7 +68,13 @@ Events are managed by us. There is no public submission form. Times are America/
 
 An event with no end time stays up through the end of its Denver start day, then drops off. An event with an end time drops off at that end time. Same title and same Denver start time updates the existing row instead of adding a second one.
 
-The homepage shows the next 6 upcoming events. `/events` lists all of them.
+The homepage shows the next two upcoming events, with a link to `/events` for the full list. The header has an Events link on desktop and on a phone. Icons are chosen from the title and description (storytime gets a book, zoo lights get sparkles, and so on). Send `"icon": "🦁"` to pick one yourself, or `"icon": null` to clear it. That column is `migrations/0002_event_icon.sql`. Like the first hood migration, `wrangler deploy` does not apply it:
+
+```bash
+npx wrangler d1 migrations apply hello-hilltop-db --remote
+```
+
+Until that runs, events still show and the page picks the icon. Saving a custom icon answers with a reminder to apply the migration.
 
 ```bash
 TOKEN=...   # the same EXPORT_TOKEN as /api/export
@@ -102,7 +108,9 @@ A Cron Trigger runs every 4 hours (`0 */4 * * *`, UTC) and fetches:
 
 Items are kept when the title or description mentions Hilltop (in a Denver context), Cherry Creek, Crestmoor, Lowry, Glendale, Hale, Montclair, Congress Park, Cranmer Park, Colorado Blvd, 6th Ave, Alameda, Holly, Monaco, Steck, Graland, East High, or Cherry Creek Schools. Crime and traffic stories are dropped (shooting, killed, homicide, crash, arrest, stabbing, and close cousins). A "Hilltop" story that isn't Denver, or that names another city or state, is dropped. Duplicates collapse by link and by title, and a direct article link wins over a Google News link.
 
-The strip shows up to 6 headlines from the last 30 days, with the source name and the Denver date. Each headline opens the feed's link in a new tab. No article text or images are stored or shown. If fewer than 3 neighborhood matches are in that window, the newest Denverite items (still skipping crime and traffic) fill the rest. Google News items credit the publisher named in the feed. Those links are Google News article URLs, because that feed doesn't include the publisher's own article URL.
+The strip shows up to 6 headlines from the last 30 days, with the source name and the Denver date. Each headline opens the feed's link in a new tab. No article text or images are stored or shown. If fewer than 3 neighborhood matches are in that window, Denverite stories about community, food, parks, and family can fill in. Politics and government-meeting stories (elections, ballots, council votes, the RTD board, and similar) are not used as filler. If nothing suitable is left, the strip shows fewer headlines, or a short friendly line. Google News items credit the publisher named in the feed. Those links are Google News article URLs, because that feed doesn't include the publisher's own article URL.
+
+Each feed is requested with a normal browser user agent. A 503, a timeout, or a body that isn't a feed is tried once more with a second browser. 9NEWS items that put the story URL in `<guid>` instead of `<link>` are still kept. A feed that still fails leaves its previous rows in place.
 
 If a feed fails, its previous rows stay. If every feed fails, the whole last good list stays. When the news cache has never been filled, the first page view starts one background refresh and still renders whatever is already stored (the empty state, until that refresh finishes). It does not call the feeds again on later visits. To fill the strip immediately, use the refresh endpoint:
 
