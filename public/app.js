@@ -82,6 +82,15 @@
   setup("signup-form", "You're on the list! Hello, neighbor! 🧡");
   setup("ideas-form", "Got it! Every idea gets read. Thank you! 💡");
 
+  // Instagram CDN links expire. A broken photo keeps the post link and a placeholder.
+  document.querySelectorAll(".ig-photo img").forEach(function (img) {
+    img.addEventListener("error", function () {
+      var photo = img.closest(".ig-photo");
+      if (photo) photo.classList.add("ig-photo-missing");
+      img.remove();
+    });
+  });
+
   // Non-JS fallback flags (?thanks=signup / ?error=ideas)
   var p = new URLSearchParams(location.search);
   var t = p.get("thanks"), er = p.get("error");

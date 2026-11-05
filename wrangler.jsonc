@@ -28,7 +28,19 @@
   "observability": {
     "enabled": true,
     "traces": { "enabled": true }
+  },
+  // Branch previews (npx wrangler preview) must not use the production database.
+  "previews": {
+    "d1_databases": [
+      {
+        "binding": "DB",
+        "database_name": "hello-hilltop-preview",
+        "database_id": "71ea0d4e-8ccd-464c-9946-9545b3def471"
+      }
+    ]
   }
-  // Secrets (not in git): EXPORT_TOKEN, TURNSTILE_SECRET
+  // Secrets (not in git): EXPORT_TOKEN, TURNSTILE_SECRET, INSTAGRAM_ACCESS_TOKEN
+  // Optional: INSTAGRAM_APP_SECRET, only to exchange a 1-hour Instagram token.
   // `npx wrangler secret put EXPORT_TOKEN` / `npx wrangler secret put TURNSTILE_SECRET`
+  // `npx wrangler secret put INSTAGRAM_ACCESS_TOKEN`
 }
