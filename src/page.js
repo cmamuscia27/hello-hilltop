@@ -1,7 +1,9 @@
 import { listUpcoming, renderEventList } from "./events.js";
+import { instagramNeedsSeed, listInstagramPosts, refreshInstagram, renderInstagram } from "./instagram.js";
 import { listRecentNews, newsNeedsSeed, refreshNews, renderNewsList, selectNews } from "./news.js";
 
 let seedInFlight = false;
+let instagramSeedInFlight = false;
 
 function fill(html, token, replacement) {
   const start = `<!--${token}_START-->`;
@@ -30,10 +32,29 @@ async function seedNews(env) {
   }
 }
 
-// Fills the hood markers from D1. The fallback copy between the markers stays
-// put if a query fails, so a missing migration never takes the homepage down.
+async function seedInstagram(env) {
+  if (instagramSeedInFlight) return;
+  instagramSeedInFlight = true;
+  try {
+    const result = await refreshInstagram(env);
+    console.log(JSON.stringify({
+      msg: "instagram_seed",
+      ok: result.ok,
+      mode: result.mode,
+      posts: result.posts ?? null,
+    }));
+  } catch (err) {
+    console.error(JSON.stringify({ msg: "instagram_seed_failed", error: err instanceof Error ? err.message : "error" }));
+  } finally {
+    instagramSeedInFlight = false;
+  }
+}
+
+// Fills the hood and Instagram markers from D1. The fallback copy between the
+// markers stays put if a query fails, so a missing migration never takes the
+// homepage down.
 export async function hoodHtml(html, env, ctx) {
-  if (!html.includes("<!--HOOD_")) return html;
+  if (!html.includes("<!--HOOD_") && !html.includes("<!--IG_")) return html;
   let next = html;
 
   if (html.includes("<!--HOOD_EVENTS_START-->") || html.includes("<!--HOOD_EVENTS_PAGE_START-->")) {
@@ -53,6 +74,17 @@ export async function hoodHtml(html, env, ctx) {
       if (typeof ctx?.waitUntil === "function" && await newsNeedsSeed(env)) ctx.waitUntil(seedNews(env));
     } catch (err) {
       console.error(JSON.stringify({ msg: "news_render_failed", error: err instanceof Error ? err.message : "error" }));
+    }
+  }
+
+  if (html.includes("<!--IG_POSTS_START-->")) {
+    try {
+      const posts = await listInstagramPosts(env);
+      const rendered = renderInstagram(posts);
+      if (rendered) next = fill(next, "IG_POSTS", rendered);
+      if (typeof ctx?.waitUntil === "function" && await instagramNeedsSeed(env)) ctx.waitUntil(seedInstagram(env));
+    } catch (err) {
+      console.error(JSON.stringify({ msg: "instagram_render_failed", error: err instanceof Error ? err.message : "error" }));
     }
   }
 

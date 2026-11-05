@@ -7,7 +7,7 @@ import { iconForEvent } from "../src/events.js";
 import { classifyItem, parseFeed, selectNews, titleKey } from "../src/news.js";
 import worker from "../src/worker.js";
 
-const migration = ["0001_hood.sql", "0002_event_icon.sql"]
+const migration = ["0001_hood.sql", "0002_event_icon.sql", "0003_instagram.sql"]
   .map((name) => readFileSync(new URL(`../migrations/${name}`, import.meta.url), "utf8"))
   .join("\n");
 const originalFetch = globalThis.fetch;

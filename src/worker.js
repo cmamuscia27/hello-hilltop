@@ -1,11 +1,14 @@
 // Hello! Hilltop Worker
 // Serves the static site (ASSETS binding) and handles two forms backed by D1
 // (DB binding). Signup and idea lists are only readable via /api/export with
-// the EXPORT_TOKEN secret. The same token manages neighborhood events and a
-// manual news refresh. The homepage reads events and headlines from D1. A
-// cron (and that refresh endpoint) fetches the RSS feeds.
+// the EXPORT_TOKEN secret. The same token manages neighborhood events, a
+// manual news refresh, and the Instagram cache. The homepage reads events,
+// headlines, and cached Instagram posts from D1. A cron (and the refresh
+// endpoints) fetches the RSS feeds and, when configured, the official
+// Instagram API.
 
 import { adminEvents } from "./events.js";
+import { adminInstagram, refreshInstagram } from "./instagram.js";
 import { refreshNews } from "./news.js";
 import { hoodHtml } from "./page.js";
 
@@ -187,7 +190,7 @@ async function servePage(assetResponse, env, ctx) {
   const type = assetResponse.headers.get("Content-Type") || "";
   if (!type.includes("text/html")) return withHeaders(assetResponse);
   const html = await assetResponse.text();
-  if (!html.includes("<!--HOOD_")) return htmlResponse(assetResponse, html, false);
+  if (!html.includes("<!--HOOD_") && !html.includes("<!--IG_")) return htmlResponse(assetResponse, html, false);
   const filled = await hoodHtml(html, env, ctx);
   return htmlResponse(assetResponse, filled, filled !== html);
 }
@@ -238,6 +241,11 @@ export default {
           const result = await adminEvents(request, env, url);
           return json(result.body, result.status);
         }
+        if (url.pathname === "/api/admin/instagram" || url.pathname.startsWith("/api/admin/instagram/")) {
+          if (!isAuthorized(request, env)) return json({ ok: false, message: "Unauthorized" }, 401);
+          const result = await adminInstagram(request, env, url);
+          return json(result.body, result.status);
+        }
         if (url.pathname === "/api/health") return json({ ok: true });
         return json({ ok: false, message: "Not found" }, 404);
       } catch (err) {
@@ -269,6 +277,18 @@ export default {
       }));
     } catch (err) {
       console.error(JSON.stringify({ msg: "news_refresh_failed", error: err instanceof Error ? err.message : "error" }));
+    }
+    try {
+      const result = await refreshInstagram(env);
+      console.log(JSON.stringify({
+        msg: "instagram_refresh",
+        ok: result.ok,
+        mode: result.mode,
+        posts: result.posts ?? null,
+        error: result.last_error || null,
+      }));
+    } catch (err) {
+      console.error(JSON.stringify({ msg: "instagram_refresh_failed", error: err instanceof Error ? err.message : "error" }));
     }
   },
 };
