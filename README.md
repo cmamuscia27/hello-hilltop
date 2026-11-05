@@ -26,7 +26,7 @@ screenshots/        Live desktop and mobile screenshots
 |---|---|
 | Account | c74b4a5d3545b51f59db846c41a52483 |
 | Worker | `hello-hilltop` (workers.dev subdomain disabled) |
-| D1 database | `hello-hilltop-db`, id `496719ee-16dd-418b-a280-94fc05d11fb1` |
+| D1 database | `hello-hilltop-db`, id `496719ee-16dd-418b-a280-94fc05d11fb1`. Branch previews use `hello-hilltop-preview`, id `71ea0d4e-8ccd-464c-9946-9545b3def471`, so a preview cannot write production signups. |
 | Custom domains | `hellohilltop.org` (serves the site) and `www.hellohilltop.org` (301 to the apex) |
 | Secrets | `EXPORT_TOKEN` (bearer token for the export endpoint) and `TURNSTILE_SECRET` (Turnstile siteverify). Both are Worker secrets, already set on the deployed Worker, and neither belongs in git. `INSTAGRAM_ACCESS_TOKEN` is the long-lived Instagram token for recent posts. It is not set until the account owner creates it. Optional `INSTAGRAM_APP_SECRET` is only for exchanging a 1-hour token. None of these belong in git. |
 
@@ -220,6 +220,8 @@ Connect the existing Worker so a push to `main` deploys https://hellohilltop.org
 4. Save. The next push to `main` runs that deploy. It does not apply `migrations/`. Run `npx wrangler d1 migrations apply hello-hilltop-db --remote` once so the Instagram tables exist.
 
 `EXPORT_TOKEN` stays a Worker secret under **Settings → Variables and Secrets**. Do not put its value in the repo, in `wrangler.jsonc`, or in a build variable. A normal `wrangler deploy` keeps the secret already stored on the Worker.
+
+Non-production branches are built with `npx wrangler preview`. That command requires the `previews` block in `wrangler.jsonc`. It points `DB` at `hello-hilltop-preview`, not the production database. Cron triggers are not copied onto a preview. After a new migration, apply it to the preview database as well as production. The preview database was created from `schema.sql`.
 
 ### Option C: raw API (how the first deploy was done)
 
