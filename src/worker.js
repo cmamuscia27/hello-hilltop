@@ -1,16 +1,23 @@
 // Hello! Hilltop Worker
-// Serves the static site (ASSETS binding) and handles two forms backed by D1
+// Serves the static site (ASSETS binding) and handles forms backed by D1
 // (DB binding). Signup and idea lists are only readable via /api/export with
 // the EXPORT_TOKEN secret. The same token manages neighborhood events, a
-// manual news refresh, and the Instagram cache. The homepage reads events,
-// headlines, and cached Instagram posts from D1. A cron (and the refresh
-// endpoints) fetches the RSS feeds and, when configured, the official
-// Instagram API.
+// manual news refresh, the Instagram cache, the support-page payment links,
+// the neighbor directory, hosted-event proposals, and neighbor notes.
+// The homepage reads events, headlines, notes, and cached Instagram posts
+// from D1. A cron (and the refresh endpoints) fetches the RSS feeds and,
+// when configured, the official Instagram API. That cron never deletes
+// neighbor notes.
 
+import { adminDirectory, DIRECTORY_OK, insertDirectory, insertRemoval, REMOVAL_OK, validateDirectoryInput, validateRemovalInput } from "./directory.js";
 import { adminEvents } from "./events.js";
+import { adminProposals, HOST_OK, insertProposal, validateHostInput } from "./host.js";
 import { adminInstagram, refreshInstagram } from "./instagram.js";
 import { refreshNews } from "./news.js";
 import { hoodHtml } from "./page.js";
+import { looksLikePitch } from "./spam.js";
+import { adminSupport } from "./support.js";
+import { adminUpdates } from "./updates.js";
 
 const APEX = "hellohilltop.org";
 const EMAIL_RE = /^[^\s@<>()[\]\\,;:"]+@[^\s@<>()[\]\\,;:"]+\.[^\s@<>()[\]\\,;:"]{2,}$/;
@@ -49,14 +56,10 @@ const TURNSTILE_HOSTS = new Set(["hellohilltop.org"]);
 const TURNSTILE_MSG = "We couldn't confirm you're a neighbor (and not a robot). Please try again.";
 const SPAM_MSG = "That looks like a link or a sales pitch. The Idea Box is for neighbor ideas, so we couldn't save it.";
 
-// Whole words for the short spam terms so "Seoul" or "season" still get through.
-// Links are rejected on purpose: the Idea Box is for neighbor ideas, not pitches.
-const IDEA_SPAM_RE =
-  /https?:\/\/|www\.|\b[\w-]+\.(?:com|net|org|info|biz|io|xyz|co|us|link|click|site|online)\b|\bseo\b|search[ -]?engines?|\brankings?\b|index(?:ing)? your (?:site|website|page|url)|\bback-?links?\b|google index/i;
-
+// Links and a short list of SEO pitches are rejected on purpose: the Idea Box
+// is for neighbor ideas, not pitches. Whole words, so "Seoul" still gets through.
 function ideaLooksLikeSpam(idea) {
-  const text = idea.normalize("NFKC").replace(/[\u200b-\u200d\ufeff]/g, "");
-  return IDEA_SPAM_RE.test(text);
+  return looksLikePitch(idea);
 }
 
 async function verifyTurnstile(request, env, token, action) {
@@ -97,7 +100,11 @@ async function verifyTurnstile(request, env, token, action) {
 async function readBody(request) {
   const type = request.headers.get("content-type") || "";
   if (type.includes("application/json")) {
-    try { return { data: await request.json(), isForm: false }; } catch { return { data: {}, isForm: false }; }
+    try {
+      const data = await request.json();
+      if (!data || typeof data !== "object" || Array.isArray(data)) return { data: {}, isForm: false };
+      return { data, isForm: false };
+    } catch { return { data: {}, isForm: false }; }
   }
   const fd = await request.formData();
   const data = {};
@@ -106,9 +113,10 @@ async function readBody(request) {
 }
 
 // Non-JS form posts get a redirect back to the right section with a flag.
-function respond(isForm, ok, anchor, message, status = 200) {
+function respond(isForm, ok, anchor, message, status = 200, page = "/") {
   if (isForm) {
-    const url = `/?${ok ? "thanks" : "error"}=${anchor}#${anchor}`;
+    const flag = `${ok ? "thanks" : "error"}=${encodeURIComponent(anchor)}`;
+    const url = `${page}?${flag}#${encodeURIComponent(anchor)}`;
     return withHeaders(new Response(null, { status: 303, headers: { Location: url, "Cache-Control": "no-store" } }));
   }
   return json({ ok, message }, ok ? 200 : status);
@@ -152,6 +160,45 @@ async function handleIdea(request, env) {
   return respond(isForm, true, "ideas", "Got it! Every idea gets read. Thank you! 💡");
 }
 
+async function handleDirectory(request, env) {
+  const { data, isForm } = await readBody(request);
+  if (clean(data.website, 200)) return respond(isForm, true, "directory", DIRECTORY_OK, 200, "/directory");
+  const checked = validateDirectoryInput(data);
+  if (!checked.ok) return respond(isForm, false, "directory", checked.message, checked.status, "/directory");
+  if (!(await verifyTurnstile(request, env, data["cf-turnstile-response"], "directory"))) {
+    return respond(isForm, false, "directory", TURNSTILE_MSG, 403, "/directory");
+  }
+  const saved = await insertDirectory(env, checked.value);
+  if (!saved.ok) return respond(isForm, false, "directory", saved.message, saved.status, "/directory");
+  return respond(isForm, true, "directory", DIRECTORY_OK, 200, "/directory");
+}
+
+async function handleRemoval(request, env) {
+  const { data, isForm } = await readBody(request);
+  if (clean(data.website, 200)) return respond(isForm, true, "removal", REMOVAL_OK, 200, "/directory");
+  const checked = validateRemovalInput(data);
+  if (!checked.ok) return respond(isForm, false, "removal", checked.message, checked.status, "/directory");
+  if (!(await verifyTurnstile(request, env, data["cf-turnstile-response"], "removal"))) {
+    return respond(isForm, false, "removal", TURNSTILE_MSG, 403, "/directory");
+  }
+  const saved = await insertRemoval(env, checked.value);
+  if (!saved.ok) return respond(isForm, false, "removal", saved.message, saved.status, "/directory");
+  return respond(isForm, true, "removal", REMOVAL_OK, 200, "/directory");
+}
+
+async function handleHost(request, env) {
+  const { data, isForm } = await readBody(request);
+  if (clean(data.website, 200)) return respond(isForm, true, "host", HOST_OK, 200, "/host");
+  const checked = validateHostInput(data);
+  if (!checked.ok) return respond(isForm, false, "host", checked.message, checked.status, "/host");
+  if (!(await verifyTurnstile(request, env, data["cf-turnstile-response"], "host"))) {
+    return respond(isForm, false, "host", TURNSTILE_MSG, 403, "/host");
+  }
+  const saved = await insertProposal(env, checked.value);
+  if (!saved.ok) return respond(isForm, false, "host", saved.message, saved.status, "/host");
+  return respond(isForm, true, "host", HOST_OK, 200, "/host");
+}
+
 function timingSafeEqual(a, b) {
   if (typeof a !== "string" || typeof b !== "string" || a.length !== b.length) return false;
   let diff = 0;
@@ -190,7 +237,8 @@ async function servePage(assetResponse, env, ctx) {
   const type = assetResponse.headers.get("Content-Type") || "";
   if (!type.includes("text/html")) return withHeaders(assetResponse);
   const html = await assetResponse.text();
-  if (!html.includes("<!--HOOD_") && !html.includes("<!--IG_")) return htmlResponse(assetResponse, html, false);
+  const dynamic = html.includes("<!--HOOD_") || html.includes("<!--IG_") || html.includes("<!--SUPPORT_") || html.includes("<!--DIRECTORY_") || html.includes("<!--UPDATES_");
+  if (!dynamic) return htmlResponse(assetResponse, html, false);
   const filled = await hoodHtml(html, env, ctx);
   return htmlResponse(assetResponse, filled, filled !== html);
 }
@@ -221,8 +269,18 @@ export default {
       return Response.redirect(url.toString(), 301);
     }
 
-    if (url.pathname === "/events.html") {
-      url.pathname = "/events";
+    const pretty = url.pathname.length > 1 && url.pathname.endsWith("/") ? url.pathname.slice(0, -1) : url.pathname;
+    const redirects = {
+      "/events.html": "/events",
+      "/support.html": "/support",
+      "/directory.html": "/directory",
+      "/host.html": "/host",
+      "/updates.html": "/updates",
+      "/donate": "/support",
+      "/donate.html": "/support",
+    };
+    if (redirects[pretty]) {
+      url.pathname = redirects[pretty];
       return Response.redirect(url.toString(), 301);
     }
 
@@ -230,6 +288,9 @@ export default {
       try {
         if (url.pathname === "/api/signup" && request.method === "POST") return await handleSignup(request, env);
         if (url.pathname === "/api/ideas" && request.method === "POST") return await handleIdea(request, env);
+        if (url.pathname === "/api/directory" && request.method === "POST") return await handleDirectory(request, env);
+        if (url.pathname === "/api/directory/removal" && request.method === "POST") return await handleRemoval(request, env);
+        if (url.pathname === "/api/events/host" && request.method === "POST") return await handleHost(request, env);
         if (url.pathname === "/api/export" && request.method === "GET") return await handleExport(request, env, url);
         if (url.pathname === "/api/admin/news/refresh" && request.method === "POST") {
           if (!isAuthorized(request, env)) return json({ ok: false, message: "Unauthorized" }, 401);
@@ -246,6 +307,26 @@ export default {
           const result = await adminInstagram(request, env, url);
           return json(result.body, result.status);
         }
+        if (url.pathname === "/api/admin/directory" || url.pathname.startsWith("/api/admin/directory/")) {
+          if (!isAuthorized(request, env)) return json({ ok: false, message: "Unauthorized" }, 401);
+          const result = await adminDirectory(request, env, url);
+          return json(result.body, result.status);
+        }
+        if (url.pathname === "/api/admin/event-proposals" || url.pathname.startsWith("/api/admin/event-proposals/")) {
+          if (!isAuthorized(request, env)) return json({ ok: false, message: "Unauthorized" }, 401);
+          const result = await adminProposals(request, env, url);
+          return json(result.body, result.status);
+        }
+        if (url.pathname === "/api/admin/updates" || url.pathname.startsWith("/api/admin/updates/")) {
+          if (!isAuthorized(request, env)) return json({ ok: false, message: "Unauthorized" }, 401);
+          const result = await adminUpdates(request, env, url);
+          return json(result.body, result.status);
+        }
+        if (url.pathname === "/api/admin/support") {
+          if (!isAuthorized(request, env)) return json({ ok: false, message: "Unauthorized" }, 401);
+          const result = await adminSupport(request, env);
+          return json(result.body, result.status);
+        }
         if (url.pathname === "/api/health") return json({ ok: true });
         return json({ ok: false, message: "Not found" }, 404);
       } catch (err) {
@@ -254,8 +335,15 @@ export default {
       }
     }
 
-    if (url.pathname === "/events" || url.pathname === "/events/") {
-      const assetUrl = new URL("/events.html", request.url);
+    const pages = {
+      "/events": "/events.html",
+      "/support": "/support.html",
+      "/directory": "/directory.html",
+      "/host": "/host.html",
+      "/updates": "/updates.html",
+    };
+    if (pages[pretty]) {
+      const assetUrl = new URL(pages[pretty], request.url);
       const asset = await env.ASSETS.fetch(new Request(assetUrl, { method: "GET" }));
       return servePage(asset, env, ctx);
     }

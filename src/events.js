@@ -330,22 +330,28 @@ export async function adminEvents(request, env, url) {
   return { status: 405, body: { ok: false, message: "That method isn't supported here." } };
 }
 
+export async function saveNewEvent(env, value) {
+  let fields = finalizeEvent(value);
+  if (!fields.ok) return { status: 400, body: { ok: false, message: fields.message } };
+  const existing = await one(env, `${SELECT} WHERE dedupe_key = ?1`, `${SELECT_LEGACY} WHERE dedupe_key = ?1`, [fields.dedupe_key]);
+  let next = value;
+  if (!value.iconProvided && existing?.icon) {
+    next = { ...value, icon: existing.icon };
+    fields = finalizeEvent(next);
+    if (!fields.ok) return { status: 400, body: { ok: false, message: fields.message } };
+  }
+  const failed = await writeEvent(env, UPSERT, fields.args, UPSERT_LEGACY, fields.args.slice(0, 11), Boolean(next.iconProvided));
+  if (failed) return failed;
+  const row = await one(env, `${SELECT} WHERE dedupe_key = ?1`, `${SELECT_LEGACY} WHERE dedupe_key = ?1`, [fields.dedupe_key]);
+  return { status: existing ? 200 : 201, body: { ok: true, created: !existing, event: toPublic(row) } };
+}
+
 async function createEvent(request, env) {
   const parsed = await readJson(request);
   if (!parsed.ok) return { status: 400, body: { ok: false, message: parsed.message } };
   const payload = parseEventPayload(parsed.data);
   if (!payload.ok) return { status: 400, body: { ok: false, message: payload.message } };
-  let fields = finalizeEvent(payload.value);
-  if (!fields.ok) return { status: 400, body: { ok: false, message: fields.message } };
-  const existing = await one(env, `${SELECT} WHERE dedupe_key = ?1`, `${SELECT_LEGACY} WHERE dedupe_key = ?1`, [fields.dedupe_key]);
-  if (!payload.value.iconProvided && existing?.icon) {
-    payload.value.icon = existing.icon;
-    fields = finalizeEvent(payload.value);
-  }
-  const failed = await writeEvent(env, UPSERT, fields.args, UPSERT_LEGACY, fields.args.slice(0, 11), payload.value.iconProvided);
-  if (failed) return failed;
-  const row = await one(env, `${SELECT} WHERE dedupe_key = ?1`, `${SELECT_LEGACY} WHERE dedupe_key = ?1`, [fields.dedupe_key]);
-  return { status: existing ? 200 : 201, body: { ok: true, created: !existing, event: toPublic(row) } };
+  return saveNewEvent(env, payload.value);
 }
 
 async function updateEvent(request, env, id) {

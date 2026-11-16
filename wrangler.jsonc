@@ -3,6 +3,7 @@
   "name": "hello-hilltop",
   "main": "src/worker.js",
   "compatibility_date": "2026-10-01",
+  "keep_vars": true,
   "account_id": "c74b4a5d3545b51f59db846c41a52483",
   "assets": {
     "directory": "./public",
@@ -41,6 +42,11 @@
   }
   // Secrets (not in git): EXPORT_TOKEN, TURNSTILE_SECRET, INSTAGRAM_ACCESS_TOKEN
   // Optional: INSTAGRAM_APP_SECRET, only to exchange a 1-hour Instagram token.
+  // Optional public payment links, plain vars or secrets, not committed:
+  // SUPPORT_CHECKOUT_URL, SUPPORT_GO_GETTER_URL, SUPPORT_FAMILY_URL,
+  // SUPPORT_BUSINESS_URL, SUPPORT_VENMO_URL, SUPPORT_ZEFFY_URL, SUPPORT_PAYPAL_URL
+  // Prefer PUT /api/admin/support so a link can change without a deploy.
+  // keep_vars preserves dashboard plain-text variables across wrangler deploy.
   // `npx wrangler secret put EXPORT_TOKEN` / `npx wrangler secret put TURNSTILE_SECRET`
   // `npx wrangler secret put INSTAGRAM_ACCESS_TOKEN`
 }

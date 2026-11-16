@@ -1,6 +1,6 @@
-# Hello! Hilltop: hellohilltop.org (Phase 1)
+# Hello! Hilltop: hellohilltop.org
 
-A site for Hello! Hilltop, a neighbor-run community group in Hilltop, Denver. It runs as one Cloudflare Worker with static assets, and a D1 database stores the email signups, Idea Box submissions, neighborhood events, and a cached local-news strip. There's no framework, no build step, and no third-party form services.
+A site for Hello! Hilltop, a neighbor-run community group in Hilltop, Denver. It is not a registered nonprofit or a 501(c)(3). It runs as one Cloudflare Worker with static assets, and a D1 database stores the email signups, Idea Box submissions, neighborhood events, a cached local-news strip, payment-link settings, the neighbor directory, hosted-event proposals, and curated neighbor notes. There's no framework, no build step, and no third-party form services. Card numbers are never collected on this site.
 
 ## Layout
 
@@ -10,12 +10,18 @@ src/worker.js       API, page rendering, cron, www→apex redirect, security hea
 src/events.js       Event validation, admin queries, event cards
 src/news.js         RSS/Atom parse, neighborhood filter, news cache
 src/instagram.js    Official Instagram media cache, oEmbed pins, token renewal
-src/page.js         Fills the homepage and /events from D1
+src/support.js      Payment links for /support (admin settings, then env vars)
+src/directory.js    Neighbor directory submissions and moderation
+src/host.js         Hosted-event proposals, approved into the events table
+src/updates.js      Curated neighbor notes the news refresh does not delete
+src/page.js         Fills the homepage and the other pages from D1
 src/time.js         America/Denver clocks
-public/             Static site (index.html, events.html, styles.css, app.js, 404.html, img/, favicons)
-migrations/         D1 migrations. 0001 adds events and news. 0003 adds Instagram.
-schema.sql          Full D1 schema for a brand-new database (signups, ideas, events, news, Instagram)
-test/               Worker checks for forms, events, and the news filter
+src/escape.js       HTML escaping and http(s) URL checks
+src/spam.js         The shared pitch filter used by the Idea Box and new forms
+public/             Static site (index, events, support, directory, host, updates, styles, app.js, 404, img/, favicons)
+migrations/         D1 migrations. 0001 events and news. 0002 event icons. 0003 Instagram. 0004 payment links. 0005 directory. 0006 hosted events. 0007 neighbor notes.
+schema.sql          Full D1 schema for a brand-new database
+test/               Worker checks for forms, events, news, Instagram, and the community features
 print/              QR code PNG + 8x10" table-sign PNG/PDF (300 dpi)
 screenshots/        Live desktop and mobile screenshots
 ```
@@ -28,7 +34,7 @@ screenshots/        Live desktop and mobile screenshots
 | Worker | `hello-hilltop` (workers.dev subdomain disabled) |
 | D1 database | `hello-hilltop-db`, id `496719ee-16dd-418b-a280-94fc05d11fb1`. Branch previews use `hello-hilltop-preview`, id `71ea0d4e-8ccd-464c-9946-9545b3def471`, so a preview cannot write production signups. |
 | Custom domains | `hellohilltop.org` (serves the site) and `www.hellohilltop.org` (301 to the apex) |
-| Secrets | `EXPORT_TOKEN` (bearer token for the export endpoint) and `TURNSTILE_SECRET` (Turnstile siteverify). Both are Worker secrets, already set on the deployed Worker, and neither belongs in git. `INSTAGRAM_ACCESS_TOKEN` is the long-lived Instagram token for recent posts. It is not set until the account owner creates it. Optional `INSTAGRAM_APP_SECRET` is only for exchanging a 1-hour token. None of these belong in git. |
+| Secrets | `EXPORT_TOKEN` (bearer token for export and every admin route) and `TURNSTILE_SECRET` (Turnstile siteverify). Both are Worker secrets, already set on the deployed Worker, and neither belongs in git. `INSTAGRAM_ACCESS_TOKEN` is the long-lived Instagram token for recent posts. It is not set until the account owner creates it. Optional `INSTAGRAM_APP_SECRET` is only for exchanging a 1-hour token. Optional payment-link variables are listed under Support. None of these belong in git. |
 
 ## Forms
 
@@ -65,7 +71,7 @@ The homepage section (and `/events`) is filled from D1 when the page is served. 
 
 ### Events
 
-Events are managed by us. There is no public submission form. Times are America/Denver. Send a Denver wall time like `2026-11-21T14:00` (no timezone), or a full ISO timestamp with `Z` or an offset. The response includes both the UTC instant and the Denver clock time.
+Events are managed by us. Neighbors can propose one at `/host`. It stays off the calendar until an admin approves it. Times are America/Denver. Send a Denver wall time like `2026-11-21T14:00` (no timezone), or a full ISO timestamp with `Z` or an offset. The response includes both the UTC instant and the Denver clock time.
 
 An event with no end time stays up through the end of its Denver start day, then drops off. An event with an end time drops off at that end time. Same title and same Denver start time updates the existing row instead of adding a second one.
 
@@ -119,7 +125,7 @@ If a feed fails, its previous rows stay. If every feed fails, the whole last goo
 curl -X POST -H "Authorization: Bearer $TOKEN" "https://hellohilltop.org/api/admin/news/refresh"
 ```
 
-The JSON lists each feed as `ok` or an error, plus how many items were saved. A failed refresh returns `"kept_previous": true` and does not clear the strip.
+The JSON lists each feed as `ok` or an error, plus how many items were saved. A failed refresh returns `"kept_previous": true` and does not clear the strip. Neighbor notes are a different table, so this refresh does not delete them.
 
 ## Instagram
 
@@ -194,6 +200,89 @@ curl -X PUT -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json
 
 A bad URL is rejected. The embed loads `https://www.instagram.com/embed.js` in the visitor's browser. The automatic feed does not. If a Content-Security-Policy is added later, pinned embeds need `https://www.instagram.com` on `script-src`, and the automatic photos need `https://*.cdninstagram.com` and `https://*.fbcdn.net` on `img-src`.
 
+## Support and donate
+
+`/support` is the donate page. `/donate` redirects there. The header on every page, including a phone, has a Donate link.
+
+Hello! Hilltop is not a 501(c)(3). The page says, in plain language, that contributions are not tax-deductible. It also says where the money goes: events and communications, not a salary. The three planned memberships are Community Go-Getter ($50/year), Family "Fun"ding ($100/year), and a business sponsorship ($250/year), plus a one-time gift of any amount. The homepage membership section uses the same amounts.
+
+There is no card form. A button appears only when it has a real http(s) link. Otherwise the page says checkout is coming soon and points people at the email list.
+
+Set the links with the admin API. That is the one to use, because it is stored in D1 and a Workers Builds deploy does not wipe it. An empty string clears that admin value. A value set here wins over an environment variable.
+
+```bash
+TOKEN=...   # the same EXPORT_TOKEN
+
+curl -H "Authorization: Bearer $TOKEN" "https://hellohilltop.org/api/admin/support"
+
+curl -X PUT -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"checkout_url":"https://buy.stripe.com/your_payment_link","venmo_url":"https://venmo.com/u/your-name","zeffy_url":"","paypal_url":""}' \
+  "https://hellohilltop.org/api/admin/support"
+```
+
+Optional per-tier links, when a hosted checkout is a fixed amount: `checkout_go_getter_url`, `checkout_family_url`, `checkout_business_url`. If a tier link is missing, that tier uses `checkout_url`. The any-amount button uses only `checkout_url`, so a fixed-amount link is not offered as "any amount." Venmo, Zeffy, and PayPal are separate buttons.
+
+The same names work as Worker variables or secrets, for local `.dev.vars` or for the dashboard: `SUPPORT_CHECKOUT_URL`, `SUPPORT_GO_GETTER_URL`, `SUPPORT_FAMILY_URL`, `SUPPORT_BUSINESS_URL`, `SUPPORT_VENMO_URL`, `SUPPORT_ZEFFY_URL`, `SUPPORT_PAYPAL_URL`. They are public links, not secrets, but they still should not be committed. `keep_vars` is set in `wrangler.jsonc` so a dashboard variable survives `wrangler deploy`. Do not put a value in the repo. This needs `migrations/0004_support_settings.sql`. Until that runs, environment variables still work and the admin PUT answers 503.
+
+## Neighbor Directory
+
+`/directory` lists babysitters, dog walkers, tutors, handymen, local businesses, recommendations, and other. A submission is pending until an admin approves it. The public page shows the title, category, description, and only the contact info the neighbor chose to share. The submitter's email is for the organizers. It is not rendered.
+
+A members-only directory is planned. Listings stay public for now, and the page says so. The form asks for a consent checkbox. A second form asks to take a listing down. That creates a removal request. It does not delete the listing by itself.
+
+Spam protection matches the other forms: a `website` honeypot, Turnstile (action `directory` or `removal`), and the same pitch filter on the title and description. The website has its own field. More than six submissions from the same email in an hour are asked to wait. This needs `migrations/0005_directory.sql`.
+
+```bash
+curl -H "Authorization: Bearer $TOKEN" "https://hellohilltop.org/api/admin/directory"
+curl -H "Authorization: Bearer $TOKEN" "https://hellohilltop.org/api/admin/directory?status=all"
+curl -X POST -H "Authorization: Bearer $TOKEN" "https://hellohilltop.org/api/admin/directory/1/approve"
+curl -X POST -H "Authorization: Bearer $TOKEN" "https://hellohilltop.org/api/admin/directory/1/reject"
+curl -X PATCH -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"contact":"Text 303-555-0100"}' \
+  "https://hellohilltop.org/api/admin/directory/1"
+curl -X DELETE -H "Authorization: Bearer $TOKEN" "https://hellohilltop.org/api/admin/directory/1"
+curl -H "Authorization: Bearer $TOKEN" "https://hellohilltop.org/api/admin/directory/removals"
+curl -X POST -H "Authorization: Bearer $TOKEN" "https://hellohilltop.org/api/admin/directory/removals/1/done"
+```
+
+`status` is `pending` (the default), `approved`, `rejected`, or `all`.
+
+## Host an event
+
+`/host` is linked from the homepage hood section and from `/events`. A neighbor sends a title, a Denver start (and optional end), a location, a description, their name, their email, an optional link, and kid-friendly or dogs-welcome flags. The email is never copied onto the public event and never rendered. The page asks hosts to keep it neighborly, follow city rules, and not close a street without a permit.
+
+Approve creates the calendar row with the same validation the admin event API uses. Kid-friendly and dogs-welcome are added to the public description. The card credits the host's name (`Via Ada`), not their email. Reject keeps it off the calendar. Needs `migrations/0006_event_proposals.sql`.
+
+```bash
+curl -H "Authorization: Bearer $TOKEN" "https://hellohilltop.org/api/admin/event-proposals"
+curl -X PATCH -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"location":"Cranmer Park, north lawn"}' \
+  "https://hellohilltop.org/api/admin/event-proposals/1"
+curl -X POST -H "Authorization: Bearer $TOKEN" "https://hellohilltop.org/api/admin/event-proposals/1/approve"
+curl -X POST -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"source_name":"Hello! Hilltop"}' \
+  "https://hellohilltop.org/api/admin/event-proposals/1/approve"
+curl -X POST -H "Authorization: Bearer $TOKEN" "https://hellohilltop.org/api/admin/event-proposals/1/reject"
+curl -X DELETE -H "Authorization: Bearer $TOKEN" "https://hellohilltop.org/api/admin/event-proposals/1"
+```
+
+Approving twice does not add a second event. A proposal that is already on the calendar has to be changed through `/api/admin/events/:id`.
+
+## Neighbor notes
+
+`/updates`, and a short strip on the homepage next to the news, are curated notes: a title, a summary, an optional link, a source, and an optional end. Send `expires_at` as `2026-12-01` (the end of that Denver day) or `2026-12-01T18:00`. A past end hides the note. The 4-hour news refresh only rewrites `news_items`. Needs `migrations/0007_neighbor_updates.sql`.
+
+```bash
+curl -H "Authorization: Bearer $TOKEN" "https://hellohilltop.org/api/admin/updates"
+curl -X POST -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"title":"Porch light reminder","summary":"Leave a light on for the block walk.","source_name":"Hello! Hilltop","link":"https://hellohilltop.org/#hood","expires_at":"2026-12-01"}' \
+  "https://hellohilltop.org/api/admin/updates"
+curl -X PATCH -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"summary":"Leave a light on. We will be out until 8."}' \
+  "https://hellohilltop.org/api/admin/updates/1"
+curl -X DELETE -H "Authorization: Bearer $TOKEN" "https://hellohilltop.org/api/admin/updates/1"
+```
+
 ## Deploy
 
 ### Option A: wrangler (once an API token or `wrangler login` is available)
@@ -201,7 +290,8 @@ A bad URL is rejected. The embed loads `https://www.instagram.com/embed.js` in t
 ```bash
 npm i -D wrangler
 npx wrangler d1 execute hello-hilltop-db --remote --file=schema.sql   # only for a fresh database
-npx wrangler d1 migrations apply hello-hilltop-db --remote             # existing database: events, news, Instagram
+npx wrangler d1 migrations apply hello-hilltop-db --remote             # existing database: events, news, Instagram, support, directory, hosting, notes
+npx wrangler d1 migrations apply hello-hilltop-preview --remote        # same migrations on the preview database
 npx wrangler secret put EXPORT_TOKEN                                  # only once
 npx wrangler secret put TURNSTILE_SECRET                              # already set; do not commit the value
 npx wrangler secret put INSTAGRAM_ACCESS_TOKEN                        # after the Meta dashboard token exists
@@ -217,7 +307,7 @@ Connect the existing Worker so a push to `main` deploys https://hellohilltop.org
 1. In the Cloudflare dashboard, open **Workers & Pages → hello-hilltop → Settings → Build → Connect to Git**.
 2. Authorize the Cloudflare GitHub app for this repo if GitHub asks, then choose `cmamuscia27/hello-hilltop`. Set the production branch to `main`.
 3. Leave the build command empty. This site has no build step. Set the deploy command to `npx wrangler deploy`, and leave the root directory as the repo root. The Worker name in the dashboard must stay `hello-hilltop`, matching `name` in `wrangler.jsonc`, or the build fails.
-4. Save. The next push to `main` runs that deploy. It does not apply `migrations/`. Run `npx wrangler d1 migrations apply hello-hilltop-db --remote` once so the Instagram tables exist.
+4. Save. The next push to `main` runs that deploy. It does not apply `migrations/`. Run `npx wrangler d1 migrations apply hello-hilltop-db --remote` for production and `npx wrangler d1 migrations apply hello-hilltop-preview --remote` for branch previews. The new files are `migrations/0004_support_settings.sql`, `migrations/0005_directory.sql`, `migrations/0006_event_proposals.sql`, and `migrations/0007_neighbor_updates.sql`.
 
 `EXPORT_TOKEN` stays a Worker secret under **Settings → Variables and Secrets**. Do not put its value in the repo, in `wrangler.jsonc`, or in a build variable. A normal `wrangler deploy` keeps the secret already stored on the Worker.
 
@@ -243,10 +333,10 @@ curl "http://localhost:8787/__scheduled?cron=0+*/4+*+*+*"
 curl -H "Authorization: Bearer $TOKEN" "http://localhost:8787/api/admin/events"
 ```
 
-Put `EXPORT_TOKEN=...` in `.dev.vars` (gitignored) so the local admin routes accept the same header. Add `INSTAGRAM_ACCESS_TOKEN` there only when a real token is available. `node --test` runs the form, hood, and Instagram checks without wrangler.
+Put `EXPORT_TOKEN=...` and `TURNSTILE_SECRET=...` in `.dev.vars` (gitignored) so the local admin routes and forms accept the same checks. Add `INSTAGRAM_ACCESS_TOKEN` there only when a real token is available. Payment links can go in `.dev.vars` too (`SUPPORT_CHECKOUT_URL=https://...`) or be set with the admin API against the local server. `node --test` runs the form, hood, Instagram, and community checks without wrangler.
 
 ## Content notes
 
-- Membership tiers are shown as **coming soon**. No payments are collected yet (Phase 2: Ghost + Stripe).
+- Membership amounts on the site are $50, $100, and $250 a year, plus a gift of any amount. Checkout stays closed, with no payment button, until a hosted link is saved with `PUT /api/admin/support` or an environment variable. Nothing on the site collects a card number. Gifts are not tax-deductible.
 - Stroll & Tell is a teaser. No editorial partner is named.
-- Don't add the names, ages, or contact info of minors without a parent's OK.
+- Don't add the names, ages, or contact info of minors without a parent's OK. The directory asks the submitter to confirm they are allowed to share what they post.

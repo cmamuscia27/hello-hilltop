@@ -1,6 +1,9 @@
+import { listApproved, renderDirectory } from "./directory.js";
 import { listUpcoming, renderEventList } from "./events.js";
 import { instagramNeedsSeed, listInstagramPosts, refreshInstagram, renderInstagram } from "./instagram.js";
 import { listRecentNews, newsNeedsSeed, refreshNews, renderNewsList, selectNews } from "./news.js";
+import { loadSupportLinks, supportPieces } from "./support.js";
+import { listVisibleUpdates, renderHomeUpdates, renderUpdatesPage } from "./updates.js";
 
 let seedInFlight = false;
 let instagramSeedInFlight = false;
@@ -54,7 +57,7 @@ async function seedInstagram(env) {
 // markers stays put if a query fails, so a missing migration never takes the
 // homepage down.
 export async function hoodHtml(html, env, ctx) {
-  if (!html.includes("<!--HOOD_") && !html.includes("<!--IG_")) return html;
+  if (!html.includes("<!--HOOD_") && !html.includes("<!--IG_") && !html.includes("<!--SUPPORT_") && !html.includes("<!--DIRECTORY_") && !html.includes("<!--UPDATES_")) return html;
   let next = html;
 
   if (html.includes("<!--HOOD_EVENTS_START-->") || html.includes("<!--HOOD_EVENTS_PAGE_START-->")) {
@@ -74,6 +77,33 @@ export async function hoodHtml(html, env, ctx) {
       if (typeof ctx?.waitUntil === "function" && await newsNeedsSeed(env)) ctx.waitUntil(seedNews(env));
     } catch (err) {
       console.error(JSON.stringify({ msg: "news_render_failed", error: err instanceof Error ? err.message : "error" }));
+    }
+  }
+
+  if (html.includes("<!--HOOD_UPDATES_START-->") || html.includes("<!--UPDATES_PAGE_START-->")) {
+    try {
+      const updates = await listVisibleUpdates(env);
+      if (html.includes("<!--HOOD_UPDATES_START-->")) next = fill(next, "HOOD_UPDATES", renderHomeUpdates(updates));
+      if (html.includes("<!--UPDATES_PAGE_START-->")) next = fill(next, "UPDATES_PAGE", renderUpdatesPage(updates));
+    } catch (err) {
+      console.error(JSON.stringify({ msg: "updates_render_failed", error: err instanceof Error ? err.message : "error" }));
+    }
+  }
+
+  if (html.includes("<!--DIRECTORY_START-->")) {
+    try {
+      next = fill(next, "DIRECTORY", renderDirectory(await listApproved(env)));
+    } catch (err) {
+      console.error(JSON.stringify({ msg: "directory_render_failed", error: err instanceof Error ? err.message : "error" }));
+    }
+  }
+
+  if (html.includes("<!--SUPPORT_STATUS_START-->")) {
+    try {
+      const pieces = supportPieces(await loadSupportLinks(env));
+      for (const [token, replacement] of Object.entries(pieces)) next = fill(next, token, replacement);
+    } catch (err) {
+      console.error(JSON.stringify({ msg: "support_render_failed", error: err instanceof Error ? err.message : "error" }));
     }
   }
 
