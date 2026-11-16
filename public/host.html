@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Host an event | Hello! Hilltop</title>
+<meta name="description" content="Propose a neighbor event in Hilltop, Denver. Tell us the Denver time, the place, and how to be a good host. It goes on the calendar after we look it over.">
+<meta name="theme-color" content="#015B60">
+<link rel="canonical" href="https://hellohilltop.org/host">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://hellohilltop.org/host">
+<meta property="og:title" content="Host an event | Hello! Hilltop">
+<meta property="og:description" content="Host something neighborly. We'll read it before it goes on the Hello! Hilltop calendar.">
+<meta property="og:image" content="https://hellohilltop.org/img/og.png">
+<link rel="icon" href="/favicon.ico" sizes="any">
+<link rel="icon" type="image/png" sizes="32x32" href="/img/favicon-32.png">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="manifest" href="/site.webmanifest">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="preconnect" href="https://challenges.cloudflare.com">
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Nunito:wght@400;700;800;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="nav">
+  <a href="/" class="brand" aria-label="Hello! Hilltop home">
+    <picture><source srcset="/img/logo.webp" type="image/webp"><img src="/img/logo.png" alt="Hello! Hilltop" width="480" height="326"></picture>
+  </a>
+  <nav aria-label="Main">
+    <ul>
+      <li><a href="/#who">Who We Are</a></li>
+      <li><a href="/events">Events</a></li>
+      <li><a href="/#hood">Your Hood</a></li>
+      <li><a href="/#stories">Stroll &amp; Tell</a></li>
+      <li><a href="/#join">Membership</a></li>
+      <li><a href="/#ideas">Idea Box</a></li>
+      <li><a href="/support">Donate</a></li>
+    </ul>
+  </nav>
+  <div class="nav-end">
+    <a class="nav-events" href="/events">Events</a>
+    <a class="nav-donate" href="/support">Donate</a>
+    <a class="btn btn-orange nav-cta" href="/#signup">Join the Fun</a>
+  </div>
+</header>
+
+<main id="main">
+<section class="section" id="host">
+  <div class="eyebrow">Your turn</div>
+  <h2>Host an event</h2>
+  <p class="intro">A porch hang, a park meetup, a pie walk. Tell us about it and we'll read it before it goes on the calendar. Your email is how we ask a question. It is never shown publicly.</p>
+  <div class="form-wrap">
+    <aside class="host-rules" aria-labelledby="good-host">
+      <h3 id="good-host">Be a good host</h3>
+      <ul>
+        <li>Keep it neighborly. A porch, a park, a living room, a block.</li>
+        <li>Follow Denver's rules. Parks, noise, and food all have them.</li>
+        <li>Don't close a street or a sidewalk unless the city has given you the permit.</li>
+        <li>We'll read this before it goes on the calendar. We can't issue a permit, and we may say not yet.</li>
+      </ul>
+    </aside>
+    <form class="form" id="host-form" data-turnstile-action="host" action="/api/events/host" method="post" novalidate>
+      <label for="host-title">Event title</label>
+      <input id="host-title" name="title" type="text" maxlength="160" required>
+      <label for="host-start">Start <span class="opt">(Denver time)</span></label>
+      <input id="host-start" name="starts_at" type="datetime-local" required>
+      <label for="host-end">End <span class="opt">(optional, Denver time)</span></label>
+      <input id="host-end" name="ends_at" type="datetime-local">
+      <label for="host-where">Location</label>
+      <input id="host-where" name="location" type="text" maxlength="200" required placeholder="Cranmer Park, a porch, a living room">
+      <label for="host-about">Description</label>
+      <textarea id="host-about" name="description" rows="5" maxlength="600" required></textarea>
+      <label for="host-link">Link <span class="opt">(optional)</span></label>
+      <input id="host-link" name="link" type="url" maxlength="2000" inputmode="url" placeholder="https://">
+      <label for="host-name">Your name</label>
+      <input id="host-name" name="name" type="text" maxlength="80" autocomplete="name" required>
+      <label for="host-email">Your email <span class="opt">(never shown on the calendar)</span></label>
+      <input id="host-email" name="email" type="email" maxlength="254" autocomplete="email" required>
+      <fieldset class="flag-row">
+        <legend>Good to know <span class="opt">(optional)</span></legend>
+        <label class="check"><input type="checkbox" name="kid_friendly" value="1"> Kid friendly</label>
+        <label class="check"><input type="checkbox" name="dog_friendly" value="1"> Dogs welcome</label>
+      </fieldset>
+      <div class="hp" aria-hidden="true"><label for="host-website">Website</label><input id="host-website" name="website" type="text" tabindex="-1" autocomplete="off"></div>
+      <div class="turnstile" id="host-turnstile" data-action="host"></div>
+      <button class="btn btn-orange" type="submit">Submit this event</button>
+      <p class="form-msg" role="status" aria-live="polite"></p>
+    </form>
+  </div>
+</section>
+</main>
+
+<footer class="footer">
+  <div>
+    <div class="footer-logo"><img src="/img/logo.png" alt="Hello! Hilltop" width="480" height="326" loading="lazy"></div>
+    <p class="note">Hello! Hilltop is a neighbor-run community group in Hilltop, Denver, separate from the Hilltop Neighborhood Association. We're not a 501(c)(3), so gifts aren't tax-deductible. Made with 🧡 by neighbors.</p>
+  </div>
+  <div>
+    <h3>Explore</h3>
+    <ul>
+      <li><a href="/events">Events</a></li>
+      <li><a href="/directory">Directory</a></li>
+      <li><a href="/host">Host an event</a></li>
+      <li><a href="/updates">Neighbor notes</a></li>
+      <li><a href="/support">Donate</a></li>
+      <li><a href="/">Back home</a></li>
+    </ul>
+  </div>
+  <div>
+    <h3>Say hello</h3>
+    <ul>
+      <li><a href="https://www.instagram.com/hilltopneighborhooddenver/" target="_blank" rel="noopener">Instagram: @hilltopneighborhooddenver</a></li>
+      <li><a href="/#signup">Join the newsletter</a></li>
+    </ul>
+    <p class="note">© 2026 Hello! Hilltop · Denver, CO</p>
+  </div>
+</footer>
+<script src="/app.js" defer></script>
+<script src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit&onload=onHilltopTurnstileLoad" defer></script>
+</body>
+</html>

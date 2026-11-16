@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Neighbor Directory | Hello! Hilltop</title>
+<meta name="description" content="A neighbor directory for Hilltop, Denver: babysitters, dog walkers, tutors, handymen, local businesses, and recommendations. Listings go up after a person here reads them.">
+<meta name="theme-color" content="#015B60">
+<link rel="canonical" href="https://hellohilltop.org/directory">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://hellohilltop.org/directory">
+<meta property="og:title" content="Neighbor Directory | Hello! Hilltop">
+<meta property="og:description" content="Find a neighbor who can help, or offer a hand. Listings are reviewed before they go public.">
+<meta property="og:image" content="https://hellohilltop.org/img/og.png">
+<link rel="icon" href="/favicon.ico" sizes="any">
+<link rel="icon" type="image/png" sizes="32x32" href="/img/favicon-32.png">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="manifest" href="/site.webmanifest">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="preconnect" href="https://challenges.cloudflare.com">
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Nunito:wght@400;700;800;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="nav">
+  <a href="/" class="brand" aria-label="Hello! Hilltop home">
+    <picture><source srcset="/img/logo.webp" type="image/webp"><img src="/img/logo.png" alt="Hello! Hilltop" width="480" height="326"></picture>
+  </a>
+  <nav aria-label="Main">
+    <ul>
+      <li><a href="/#who">Who We Are</a></li>
+      <li><a href="/events">Events</a></li>
+      <li><a href="/#hood">Your Hood</a></li>
+      <li><a href="/#stories">Stroll &amp; Tell</a></li>
+      <li><a href="/#join">Membership</a></li>
+      <li><a href="/#ideas">Idea Box</a></li>
+      <li><a href="/support">Donate</a></li>
+    </ul>
+  </nav>
+  <div class="nav-end">
+    <a class="nav-events" href="/events">Events</a>
+    <a class="nav-donate" href="/support">Donate</a>
+    <a class="btn btn-orange nav-cta" href="/#signup">Join the Fun</a>
+  </div>
+</header>
+
+<main id="main">
+<section class="section">
+  <div class="eyebrow">The neighbor book</div>
+  <h2>Neighbor Directory</h2>
+  <p class="intro">Babysitters, dog walkers, tutors, handymen, local businesses, and the recommendations you actually trust. A neighbor sends it in. A person here reads it. Then it shows up.</p>
+  <aside class="disclaimer">
+    <h3>Public for now</h3>
+    <p>A members-only directory is planned. For now, approved listings are public, so the whole block can use them. Share only the contact info you're glad for a neighbor to see. Don't post someone else's details unless you know they're okay with it.</p>
+  </aside>
+  <div class="directory-wrap"><!--DIRECTORY_START-->
+    <p class="empty-hood news-empty">No listings yet. Send one below and we'll look it over before it appears here.</p>
+  <!--DIRECTORY_END--></div>
+</section>
+
+<section class="section section-teal" id="directory">
+  <div class="split split-center">
+    <div>
+      <div class="eyebrow eyebrow-sun">Add a listing</div>
+      <h2 class="h2-white">Offer a hand, or pass on a good name.</h2>
+      <p class="lead">Your email lets us ask a question or confirm a removal. It is not published. Whatever you type in the contact box is what neighbors will see, after we approve it.</p>
+    </div>
+    <form class="form" id="directory-form" data-turnstile-action="directory" action="/api/directory" method="post" novalidate>
+      <label for="dir-category">Category</label>
+      <select id="dir-category" name="category" required>
+        <option value="">Choose one</option>
+        <option value="babysitter">Babysitters</option>
+        <option value="dog-walker">Dog walkers</option>
+        <option value="tutor">Tutors</option>
+        <option value="handyman">Handymen</option>
+        <option value="business">Local businesses</option>
+        <option value="recommendation">Recommendations</option>
+        <option value="other">Other</option>
+      </select>
+      <label for="dir-title">Name of the person, business, or recommendation</label>
+      <input id="dir-title" name="title" type="text" maxlength="120" required>
+      <label for="dir-description">Short description</label>
+      <textarea id="dir-description" name="description" rows="4" maxlength="600" required></textarea>
+      <label for="dir-contact">Contact info to show publicly</label>
+      <textarea id="dir-contact" name="contact" rows="3" maxlength="200" required placeholder="A phone number, an email you're happy to share, an Instagram handle"></textarea>
+      <label for="dir-url">Website <span class="opt">(optional)</span></label>
+      <input id="dir-url" name="contact_url" type="url" maxlength="2000" inputmode="url" placeholder="https://">
+      <label for="dir-name">Your name <span class="opt">(optional, organizers only)</span></label>
+      <input id="dir-name" name="name" type="text" maxlength="100" autocomplete="name">
+      <label for="dir-email">Your email <span class="opt">(organizers only)</span></label>
+      <input id="dir-email" name="email" type="email" maxlength="254" autocomplete="email" required>
+      <label class="check"><input type="checkbox" name="consent" value="1" required> I'm okay with this listing being shown publicly, and I'm only sharing contact info I'm allowed to share.</label>
+      <div class="hp" aria-hidden="true"><label for="dir-website">Website</label><input id="dir-website" name="website" type="text" tabindex="-1" autocomplete="off"></div>
+      <div class="turnstile" id="directory-turnstile" data-action="directory"></div>
+      <button class="btn btn-orange" type="submit">Send the listing</button>
+      <p class="form-msg" role="status" aria-live="polite"></p>
+    </form>
+  </div>
+</section>
+
+<section class="section section-white" id="removal">
+  <div class="split split-center">
+    <div>
+      <div class="eyebrow">Take it down</div>
+      <h2>Need a listing removed?</h2>
+      <p class="lead">Tell us the listing number (like Listing #12) or the name, and an email we can reply to. We'll pull it. This doesn't happen automatically. A person reads the request.</p>
+    </div>
+    <form class="form" id="removal-form" data-turnstile-action="removal" action="/api/directory/removal" method="post" novalidate>
+      <label for="rm-listing">Which listing?</label>
+      <input id="rm-listing" name="listing" type="text" maxlength="160" required>
+      <label for="rm-email">Your email</label>
+      <input id="rm-email" name="email" type="email" maxlength="254" autocomplete="email" required>
+      <label for="rm-note">Anything we should know? <span class="opt">(optional)</span></label>
+      <textarea id="rm-note" name="note" rows="3" maxlength="500"></textarea>
+      <label class="check"><input type="checkbox" name="confirm" value="1" required> Please take this listing off the public directory.</label>
+      <div class="hp" aria-hidden="true"><label for="rm-website">Website</label><input id="rm-website" name="website" type="text" tabindex="-1" autocomplete="off"></div>
+      <div class="turnstile" id="removal-turnstile" data-action="removal"></div>
+      <button class="btn btn-teal" type="submit">Request removal</button>
+      <p class="form-msg" role="status" aria-live="polite"></p>
+    </form>
+  </div>
+</section>
+</main>
+
+<footer class="footer">
+  <div>
+    <div class="footer-logo"><img src="/img/logo.png" alt="Hello! Hilltop" width="480" height="326" loading="lazy"></div>
+    <p class="note">Hello! Hilltop is a neighbor-run community group in Hilltop, Denver, separate from the Hilltop Neighborhood Association. We're not a 501(c)(3), so gifts aren't tax-deductible. Made with 🧡 by neighbors.</p>
+  </div>
+  <div>
+    <h3>Explore</h3>
+    <ul>
+      <li><a href="/events">Events</a></li>
+      <li><a href="/directory">Directory</a></li>
+      <li><a href="/host">Host an event</a></li>
+      <li><a href="/updates">Neighbor notes</a></li>
+      <li><a href="/support">Donate</a></li>
+      <li><a href="/">Back home</a></li>
+    </ul>
+  </div>
+  <div>
+    <h3>Say hello</h3>
+    <ul>
+      <li><a href="https://www.instagram.com/hilltopneighborhooddenver/" target="_blank" rel="noopener">Instagram: @hilltopneighborhooddenver</a></li>
+      <li><a href="/#signup">Join the newsletter</a></li>
+    </ul>
+    <p class="note">© 2026 Hello! Hilltop · Denver, CO</p>
+  </div>
+</footer>
+<script src="/app.js" defer></script>
+<script src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit&onload=onHilltopTurnstileLoad" defer></script>
+</body>
+</html>
